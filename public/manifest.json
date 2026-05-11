@@ -1,0 +1,22 @@
+{
+  "short_name": "Actividades",
+  "name": "Activity App",
+  "icons": [
+    {
+      "src": "https://activity-app-kohl.vercel.app/icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://activity-app-kohl.vercel.app/icon.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": "/?pwa=1",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#312e81",
+  "background_color": "#ffffff"
+}
