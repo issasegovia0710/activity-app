@@ -1,32 +1,38 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <title>Actividades</title>
-
+    <title>activity-app</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
     <style id="expo-reset">
-      html, body { height: 100%; }
-      body { overflow: hidden; }
-      #root { display: flex; height: 100%; flex: 1; }
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
     </style>
-
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    
-    <link rel="apple-touch-icon" href="/icon.png" />
-    <link rel="icon" type="image/png" href="/icon.png" />
-
-    <meta property="og:title" content="Activity App" />
-    <meta property="og:description" content="Gestión de actividades y misiones" />
-    <meta property="og:image" content="https://activity-app-git-main-issasegovia0710s-projects.vercel.app/icon.png" />
-    <meta property="og:type" content="website" />
-  </head>
+  <meta name="theme-color" content="#312e81">
+<link rel="icon" href="/favicon.ico" /></head>
 
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
     <div id="root"></div>
-  </body>
+  <script src="/_expo/static/js/web/AppEntry-98eb0aea1c9128da3116c1632b1744f2.js" defer></script>
+</body>
 </html>
