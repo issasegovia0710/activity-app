@@ -4,7 +4,7 @@
     "slug": "activity-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./src/assets/icon.ico",
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.issasegovia.activity",
@@ -13,8 +13,8 @@
       }
     },
     "web": {
+      "favicon": "./src/assets/icon.ico",
       "bundler": "metro",
-      "icon": ".src/assets/icon.ico",
       "display": "standalone",
       "shortName": "Actividades",
       "themeColor": "#312e81"
