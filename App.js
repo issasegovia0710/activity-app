@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 
+// ESTE ES EL IMPORT NUEVO QUE SOLUCIONA EL ERROR EN LA WEB
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 import storage from './src/config/storage';
 import api from './src/config/api';
 import TEMAS from './src/config/themes';
@@ -195,8 +198,9 @@ export default function App() {
     );
   }
 
+  // AQUÍ ESTÁ EL CAMBIO PRINCIPAL: Envolvemos todo en <SafeAreaProvider>
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="light" />
 
       {currentScreen === 'Login' && (
@@ -254,6 +258,6 @@ export default function App() {
           cambiarTemaGlobal={cambiarTemaGlobal}
         />
       )}
-    </>
+    </SafeAreaProvider>
   );
 }
