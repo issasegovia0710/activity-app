@@ -13,7 +13,11 @@
       }
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "icon": ".src/assets/icon.ico",
+      "display": "standalone",
+      "shortName": "Actividades",
+      "themeColor": "#312e81"
     },
     "plugins": [
       "expo-secure-store"
