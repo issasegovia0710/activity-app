@@ -11,7 +11,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-// Importación corregida de SafeAreaView
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -116,7 +116,7 @@ export default function DashboardScreen({ usuario, onLogout, navigation, tema })
         toValue: 1,
         duration: 850,
         easing: Easing.out(Easing.back(1.2)),
-        useNativeDriver: false, // <-- CORREGIDO A FALSE (chocaba con glowBorderColor)
+        useNativeDriver: false,
       }),
     ]).start();
 
@@ -199,7 +199,39 @@ export default function DashboardScreen({ usuario, onLogout, navigation, tema })
       return valor;
     }
 
-    const fecha = new Date(String(valor).replace(' ', 'T'));
+    const textoOriginal = String(valor).trim();
+
+    if (!textoOriginal) return null;
+
+    const textoLimpio = textoOriginal
+      .replace('T', ' ')
+      .replace(/\.\d+/, '')
+      .replace(/Z$/i, '')
+      .replace(/([+-]\d{2}:?\d{2})$/, '')
+      .trim();
+
+    const match = textoLimpio.match(
+      /^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    );
+
+    if (!match) {
+      const fechaFallback = new Date(textoOriginal);
+
+      if (Number.isNaN(fechaFallback.getTime())) {
+        return null;
+      }
+
+      return fechaFallback;
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const hours = Number(match[4] || 0);
+    const minutes = Number(match[5] || 0);
+    const seconds = Number(match[6] || 0);
+
+    const fecha = new Date(year, month, day, hours, minutes, seconds, 0);
 
     if (Number.isNaN(fecha.getTime())) {
       return null;
