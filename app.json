@@ -1,26 +1,37 @@
 {
-  "plugins": [
-    "expo-secure-store"
-  ],
-  "extra": {
-    "eas": {
-      "projectId": "96edb2be-564c-4fee-9735-3d281bc9e6ef"
-    }
-  },
   "expo": {
+    "name": "activity-app",
+    "slug": "activity-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.issasegovia.activity",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "supportsTablet": true
     },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.issasegovia.activity"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "react-native-reanimated"
+    ],
     "extra": {
       "eas": {
         "projectId": "96edb2be-564c-4fee-9735-3d281bc9e6ef"
       }
-    },
-    "plugins": [
-      "expo-secure-store"
-    ]
+    }
   }
 }
