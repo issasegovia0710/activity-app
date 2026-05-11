@@ -16,6 +16,8 @@ import ActivitisDashScreen from './src/screens/ActivitisDashScreen';
 import EstadisticasScreen from './src/screens/EstadisticasScreen';
 import AjustesScreen from './src/screens/AjustesScreen';
 
+import { inicializarNotificaciones } from './src/utils/notificacionesTareas';
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('Login');
   const [usuario, setUsuario] = useState(null);
@@ -26,8 +28,18 @@ export default function App() {
   const tema = TEMAS[temaActual] || TEMAS.clasico;
 
   useEffect(() => {
-    revisarSesion();
+    iniciarAplicacion();
   }, []);
+
+  const iniciarAplicacion = async () => {
+    try {
+      await inicializarNotificaciones();
+      await revisarSesion();
+    } catch (error) {
+      console.log('Error al iniciar aplicación:', error.message);
+      await revisarSesion();
+    }
+  };
 
   const eliminarStorageItem = async (key) => {
     try {
@@ -198,7 +210,6 @@ export default function App() {
     );
   }
 
-  // AQUÍ ESTÁ EL CAMBIO PRINCIPAL: Envolvemos todo en <SafeAreaProvider>
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />

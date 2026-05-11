@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import api from '../config/api';
+import { programarNotificacionesTarea } from '../utils/notificacionesTareas';
 
 const { width, height } = Dimensions.get('window');
 
@@ -414,6 +415,49 @@ export default function MisionesScreen({ route, navigation, tema }) {
         return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     };
 
+    const construirDateDesdeMysql = (fechaMysql) => {
+        if (!fechaMysql) {
+            return null;
+        }
+
+        const fecha = new Date(String(fechaMysql).replace(' ', 'T'));
+
+        if (Number.isNaN(fecha.getTime())) {
+            return null;
+        }
+
+        return fecha;
+    };
+
+    const calcularFechaExpiracionMision = (fechaInicioMysql, duracionFinal) => {
+        if (!duracionFinal || Number.isNaN(Number(duracionFinal)) || Number(duracionFinal) <= 0) {
+            return null;
+        }
+
+        const fechaInicio = construirDateDesdeMysql(fechaInicioMysql);
+
+        if (!fechaInicio) {
+            return null;
+        }
+
+        return new Date(fechaInicio.getTime() + Number(duracionFinal) * 60 * 60 * 1000);
+    };
+
+    const obtenerIdActividadRespuesta = (response, actividad) => {
+        const data = response?.data || {};
+
+        return (
+            data?.actividad?.id ||
+            data?.actividad?.id_actividad ||
+            data?.actividad?.idActividad ||
+            data?.id ||
+            data?.id_actividad ||
+            data?.idActividad ||
+            data?.actividadId ||
+            `${actividad.nombre}-${actividad.fecha_inicio}`
+        );
+    };
+
     const construirFechaInicioMysql = (fecha, hora) => {
         if (!fechaValida(fecha) || !horaValida(hora)) {
             return null;
@@ -688,6 +732,43 @@ export default function MisionesScreen({ route, navigation, tema }) {
             setGuardando(true);
 
             const response = await api.post('/actividades', nuevaActividad);
+
+            const fechaExpiracionCalculada = calcularFechaExpiracionMision(
+                fechaInicioFinal,
+                duracionFinal
+            );
+
+            const actividadParaNotificaciones = {
+                id: obtenerIdActividadRespuesta(response, nuevaActividad),
+                id_tarea: obtenerIdActividadRespuesta(response, nuevaActividad),
+                titulo: nuevaActividad.nombre,
+                nombre: nuevaActividad.nombre,
+                descripcion: nuevaActividad.descripcion,
+                tipo: nuevaActividad.tipo,
+                prioridad: nuevaActividad.prioridad,
+                estatus: nuevaActividad.estatus,
+                fechaInicio: fechaInicioFinal,
+                fecha_inicio: fechaInicioFinal,
+                fechaExpiracion: fechaExpiracionCalculada
+                    ? formatearFechaMysql(fechaExpiracionCalculada)
+                    : null,
+                fecha_expiracion: fechaExpiracionCalculada
+                    ? formatearFechaMysql(fechaExpiracionCalculada)
+                    : null,
+                duracion_horas: duracionFinal,
+                actividad_autoacompletable: nuevaActividad.actividad_autoacompletable,
+            };
+
+            const resultadoNotificaciones = await programarNotificacionesTarea(
+                actividadParaNotificaciones
+            );
+
+            if (!resultadoNotificaciones?.ok) {
+                console.log(
+                    'La misión se guardó, pero no se pudieron programar notificaciones:',
+                    resultadoNotificaciones?.mensaje
+                );
+            }
 
             Alert.alert(
                 'Misión creada',
