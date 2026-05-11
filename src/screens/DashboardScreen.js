@@ -3,7 +3,6 @@ import {
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
   TouchableOpacity,
   ScrollView,
   Animated,
@@ -12,6 +11,8 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+// Importación corregida de SafeAreaView
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import api from '../config/api';
@@ -115,7 +116,7 @@ export default function DashboardScreen({ usuario, onLogout, navigation, tema })
         toValue: 1,
         duration: 850,
         easing: Easing.out(Easing.back(1.2)),
-        useNativeDriver: true,
+        useNativeDriver: false, // <-- CORREGIDO A FALSE (chocaba con glowBorderColor)
       }),
     ]).start();
 

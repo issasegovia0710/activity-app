@@ -3,7 +3,6 @@ import {
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
@@ -12,6 +11,8 @@ import {
   Dimensions,
   Easing,
 } from 'react-native';
+// Importación corregida para quitar el Warning amarillo
+import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { Ionicons } from '@expo/vector-icons';
 
 import api from '../config/api';
@@ -64,19 +65,19 @@ export default function LoginScreen({ onLogin, tema }) {
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 900,
-        useNativeDriver: true,
+        useNativeDriver: false, // Corregido a false
       }),
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 850,
         easing: Easing.out(Easing.back(1.4)),
-        useNativeDriver: true,
+        useNativeDriver: false, // Corregido a false
       }),
       Animated.timing(scaleAnim, {
         toValue: 1,
         duration: 850,
         easing: Easing.out(Easing.back(1.2)),
-        useNativeDriver: true,
+        useNativeDriver: false, // Corregido a false
       }),
     ]).start();
 
@@ -173,7 +174,7 @@ export default function LoginScreen({ onLogin, tema }) {
           toValue: 0.92,
           duration: 180,
           easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
+          useNativeDriver: false, // Corregido a false
         }),
         Animated.timing(transitionOpacity, {
           toValue: 1,

@@ -2,10 +2,10 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import storage from './storage';
 
-const API_URL_WEB = 'http://localhost:3000/api';
+const API_URL_WEB = 'https://activity-api-git-main-issasegovia0710s-projects.vercel.app/api';
 
 // Para iPhone cambia esto por la IP de tu computadora.
-const API_URL_MOVIL = 'http://192.168.1.XX:3000/api';
+const API_URL_MOVIL = 'https://activity-api-git-main-issasegovia0710s-projects.vercel.app/api';
 
 const API_BASE_URL = Platform.OS === 'web' ? API_URL_WEB : API_URL_MOVIL;
 

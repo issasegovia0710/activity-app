@@ -6,5 +6,21 @@
     "eas": {
       "projectId": "96edb2be-564c-4fee-9735-3d281bc9e6ef"
     }
+  },
+  "expo": {
+    "ios": {
+      "bundleIdentifier": "com.issasegovia.activity",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "96edb2be-564c-4fee-9735-3d281bc9e6ef"
+      }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }
