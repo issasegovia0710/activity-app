@@ -16,8 +16,7 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-secure-store",
-      "react-native-reanimated"
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
