@@ -4,7 +4,7 @@
     "slug": "activity-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/icon.ico",
+    "icon": "./src/assets/icon.png", 
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.issasegovia.activity",
@@ -13,11 +13,12 @@
       }
     },
     "web": {
-      "favicon": "./src/assets/icon.ico",
+      "favicon": "./src/assets/icon.png",
       "bundler": "metro",
       "display": "standalone",
       "shortName": "Actividades",
-      "themeColor": "#312e81"
+      "themeColor": "#312e81",
+      "backgroundColor": "#312e81"
     },
     "plugins": [
       "expo-secure-store"
