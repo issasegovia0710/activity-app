@@ -1,10 +1,8 @@
-import { Platform } from 'react-native';
-import * as Device from 'expo-device';
+import { Alert, Linking, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-
 import storage from '../config/storage';
 
-const CANAL_TAREAS = 'activity-day-life-tareas';
+const CANAL_TAREAS = 'tareas';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -24,11 +22,130 @@ const limpiarTexto = (valor) => {
   return String(valor).trim();
 };
 
+const crearCanalAndroid = async () => {
+  if (Platform.OS !== 'android') {
+    return;
+  }
+
+  await Notifications.setNotificationChannelAsync(CANAL_TAREAS, {
+    name: 'Tareas',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#5B4BF2',
+    sound: 'default',
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+  });
+};
+
+export const inicializarNotificaciones = async () => {
+  try {
+    if (Platform.OS === 'web') {
+      console.log('Las notificaciones locales no funcionan en web.');
+      return false;
+    }
+
+    await crearCanalAndroid();
+
+    const permisosActuales = await Notifications.getPermissionsAsync();
+
+    console.log('Permisos actuales de notificaciones:', permisosActuales);
+
+    let estadoFinal = permisosActuales.status;
+
+    if (estadoFinal !== 'granted') {
+      const permisosSolicitados = await Notifications.requestPermissionsAsync();
+      console.log('Permisos solicitados:', permisosSolicitados);
+      estadoFinal = permisosSolicitados.status;
+    }
+
+    if (estadoFinal !== 'granted') {
+      Alert.alert(
+        'Permiso de notificaciones',
+        'No se autorizó el permiso. Actívalo manualmente en la configuración del teléfono.',
+        [
+          {
+            text: 'Abrir configuración',
+            onPress: () => Linking.openSettings(),
+          },
+          {
+            text: 'Cancelar',
+            style: 'cancel',
+          },
+        ]
+      );
+
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.log('Error inicializando notificaciones:', error);
+    return false;
+  }
+};
+
+const convertirFechaLocal = (valor) => {
+  if (!valor) {
+    return null;
+  }
+
+  if (valor instanceof Date) {
+    if (Number.isNaN(valor.getTime())) {
+      return null;
+    }
+
+    return valor;
+  }
+
+  const textoOriginal = String(valor).trim();
+
+  if (!textoOriginal) {
+    return null;
+  }
+
+  const textoLimpio = textoOriginal
+    .replace('T', ' ')
+    .replace(/\.\d+/, '')
+    .replace(/Z$/i, '')
+    .replace(/([+-]\d{2}:?\d{2})$/, '')
+    .trim();
+
+  const match = textoLimpio.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+
+  if (!match) {
+    const fechaFallback = new Date(textoOriginal);
+
+    if (Number.isNaN(fechaFallback.getTime())) {
+      return null;
+    }
+
+    return fechaFallback;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const hours = Number(match[4] || 0);
+  const minutes = Number(match[5] || 0);
+  const seconds = Number(match[6] || 0);
+
+  const fecha = new Date(year, month, day, hours, minutes, seconds, 0);
+
+  if (Number.isNaN(fecha.getTime())) {
+    return null;
+  }
+
+  return fecha;
+};
+
 const obtenerIdTarea = (tarea) => {
   return limpiarTexto(
     tarea?.id ||
       tarea?.id_tarea ||
-      tarea?.idTarea ||
+      tarea?.idActividad ||
+      tarea?.id_actividad ||
       tarea?._id ||
       tarea?.folio ||
       tarea?.nombre ||
@@ -38,55 +155,27 @@ const obtenerIdTarea = (tarea) => {
 };
 
 const obtenerTituloTarea = (tarea) => {
-  const titulo =
+  return limpiarTexto(
     tarea?.titulo ||
-    tarea?.nombre ||
-    tarea?.actividad ||
-    tarea?.descripcion ||
-    'Tarea';
-
-  return limpiarTexto(titulo) || 'Tarea';
+      tarea?.nombre ||
+      tarea?.actividad ||
+      tarea?.descripcion ||
+      'Tarea'
+  ) || 'Tarea';
 };
 
 const obtenerFechaExpiracion = (tarea) => {
-  const fechaDirecta =
+  return convertirFechaLocal(
     tarea?.fechaExpiracion ||
-    tarea?.fecha_expiracion ||
-    tarea?.fechaVencimiento ||
-    tarea?.fecha_vencimiento ||
-    tarea?.fechaFin ||
-    tarea?.fecha_fin ||
-    tarea?.vence ||
-    tarea?.deadline ||
-    tarea?.expira;
-
-  const hora =
-    tarea?.horaExpiracion ||
-    tarea?.hora_expiracion ||
-    tarea?.horaVencimiento ||
-    tarea?.hora_vencimiento ||
-    tarea?.horaFin ||
-    tarea?.hora_fin;
-
-  if (!fechaDirecta) {
-    return null;
-  }
-
-  let textoFecha = limpiarTexto(fechaDirecta);
-
-  if (hora && /^\d{4}-\d{2}-\d{2}$/.test(textoFecha)) {
-    textoFecha = `${textoFecha} ${limpiarTexto(hora)}`;
-  }
-
-  textoFecha = textoFecha.replace(' ', 'T');
-
-  const fecha = new Date(textoFecha);
-
-  if (Number.isNaN(fecha.getTime())) {
-    return null;
-  }
-
-  return fecha;
+      tarea?.fecha_expiracion ||
+      tarea?.fechaVencimiento ||
+      tarea?.fecha_vencimiento ||
+      tarea?.fechaFin ||
+      tarea?.fecha_fin ||
+      tarea?.vence ||
+      tarea?.deadline ||
+      tarea?.expira
+  );
 };
 
 const eliminarStorageItem = async (key) => {
@@ -107,74 +196,36 @@ const eliminarStorageItem = async (key) => {
   }
 };
 
-export const inicializarNotificaciones = async () => {
+export const probarNotificacionLocal = async () => {
   try {
-    if (Platform.OS === 'web') {
-      console.log('Las notificaciones locales de Expo no se usan en web.');
-      return false;
-    }
+    const tienePermiso = await inicializarNotificaciones();
 
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(CANAL_TAREAS, {
-        name: 'Tareas',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#5B4BF2',
-        sound: 'default',
-      });
-    }
-
-    if (!Device.isDevice) {
-      console.log('Las notificaciones deben probarse en un dispositivo físico.');
-      return false;
-    }
-
-    const permisosActuales = await Notifications.getPermissionsAsync();
-
-    let estadoFinal = permisosActuales.status;
-
-    if (estadoFinal !== 'granted') {
-      const nuevosPermisos = await Notifications.requestPermissionsAsync();
-      estadoFinal = nuevosPermisos.status;
-    }
-
-    if (estadoFinal !== 'granted') {
-      console.log('Permiso de notificaciones denegado.');
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.log('Error inicializando notificaciones:', error.message);
-    return false;
-  }
-};
-
-export const mostrarNotificacionInmediata = async ({
-  titulo = 'Activity Day Life',
-  cuerpo = '',
-  data = {},
-}) => {
-  try {
-    const permiso = await inicializarNotificaciones();
-
-    if (!permiso) {
+    if (!tienePermiso) {
+      console.log('No se pudo probar notificación porque no hay permiso.');
       return null;
     }
 
-    const idNotificacion = await Notifications.scheduleNotificationAsync({
+    const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: titulo,
-        body: cuerpo,
-        sound: true,
-        data,
+        title: 'Prueba de notificación ✅',
+        body: 'Si ves esto, las notificaciones locales ya funcionan.',
+        sound: 'default',
+        data: {
+          tipo: 'prueba_notificacion',
+        },
       },
-      trigger: null,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 2,
+        channelId: CANAL_TAREAS,
+      },
     });
 
-    return idNotificacion;
+    console.log('Notificación de prueba programada:', id);
+
+    return id;
   } catch (error) {
-    console.log('Error mostrando notificación inmediata:', error.message);
+    console.log('Error probando notificación local:', error);
     return null;
   }
 };
@@ -206,15 +257,15 @@ export const cancelarNotificacionesTarea = async (idTarea) => {
 
     await eliminarStorageItem(key);
   } catch (error) {
-    console.log('Error cancelando notificaciones de tarea:', error.message);
+    console.log('Error cancelando notificaciones de tarea:', error);
   }
 };
 
-export const programarNotificacionesTarea = async (tarea, opciones = {}) => {
+export const programarNotificacionesTarea = async (tarea) => {
   try {
-    const permiso = await inicializarNotificaciones();
+    const tienePermiso = await inicializarNotificaciones();
 
-    if (!permiso) {
+    if (!tienePermiso) {
       return {
         ok: false,
         ids: [],
@@ -229,57 +280,40 @@ export const programarNotificacionesTarea = async (tarea, opciones = {}) => {
     await cancelarNotificacionesTarea(idTarea);
 
     const idsProgramados = [];
-    const ahora = Date.now();
+    const ahora = new Date();
 
-    const notificarHabilitada = opciones.notificarHabilitada !== false;
-    const notificarDiezMinutosAntes = opciones.notificarDiezMinutosAntes !== false;
-    const notificarExpirada = opciones.notificarExpirada !== false;
-
-    if (notificarHabilitada) {
-      const idHabilitada = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Tarea habilitada ✅',
-          body: `${tituloTarea} ya está activa.`,
-          sound: true,
-          data: {
-            tipo: 'tarea_habilitada',
-            idTarea,
-            tarea,
-          },
+    const idHabilitada = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Tarea habilitada ✅',
+        body: `${tituloTarea} ya está activa.`,
+        sound: 'default',
+        data: {
+          tipo: 'tarea_habilitada',
+          idTarea,
         },
-        trigger: null,
-      });
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 2,
+        channelId: CANAL_TAREAS,
+      },
+    });
 
-      idsProgramados.push(idHabilitada);
-    }
+    idsProgramados.push(idHabilitada);
 
-    if (!fechaExpiracion) {
-      await storage.setItem(
-        `notificaciones_tarea_${idTarea}`,
-        JSON.stringify(idsProgramados)
-      );
+    if (fechaExpiracion) {
+      const tiempoExpiracion = fechaExpiracion.getTime();
+      const diezMinutosAntes = new Date(tiempoExpiracion - 10 * 60 * 1000);
 
-      return {
-        ok: true,
-        ids: idsProgramados,
-        mensaje: 'Se notificó tarea habilitada, pero no se encontró fecha de expiración.',
-      };
-    }
-
-    const tiempoExpiracion = fechaExpiracion.getTime();
-    const diezMinutosAntes = new Date(tiempoExpiracion - 10 * 60 * 1000);
-
-    if (notificarDiezMinutosAntes) {
-      if (diezMinutosAntes.getTime() > ahora) {
+      if (diezMinutosAntes > ahora) {
         const idDiezMinutos = await Notifications.scheduleNotificationAsync({
           content: {
             title: 'Tu tarea está por expirar ⏳',
             body: `${tituloTarea} vence en 10 minutos.`,
-            sound: true,
+            sound: 'default',
             data: {
               tipo: 'tarea_10_minutos_antes',
               idTarea,
-              tarea,
             },
           },
           trigger: {
@@ -290,36 +324,17 @@ export const programarNotificacionesTarea = async (tarea, opciones = {}) => {
         });
 
         idsProgramados.push(idDiezMinutos);
-      } else if (tiempoExpiracion > ahora) {
-        const idVencePronto = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Tu tarea vence pronto ⏳',
-            body: `${tituloTarea} vence en menos de 10 minutos.`,
-            sound: true,
-            data: {
-              tipo: 'tarea_vence_pronto',
-              idTarea,
-              tarea,
-            },
-          },
-          trigger: null,
-        });
-
-        idsProgramados.push(idVencePronto);
       }
-    }
 
-    if (notificarExpirada) {
-      if (tiempoExpiracion > ahora) {
+      if (fechaExpiracion > ahora) {
         const idExpirada = await Notifications.scheduleNotificationAsync({
           content: {
             title: 'Tarea expirada ⚠️',
             body: `${tituloTarea} ya expiró.`,
-            sound: true,
+            sound: 'default',
             data: {
               tipo: 'tarea_expirada',
               idTarea,
-              tarea,
             },
           },
           trigger: {
@@ -330,22 +345,6 @@ export const programarNotificacionesTarea = async (tarea, opciones = {}) => {
         });
 
         idsProgramados.push(idExpirada);
-      } else {
-        const idYaExpirada = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Tarea expirada ⚠️',
-            body: `${tituloTarea} ya estaba expirada.`,
-            sound: true,
-            data: {
-              tipo: 'tarea_expirada',
-              idTarea,
-              tarea,
-            },
-          },
-          trigger: null,
-        });
-
-        idsProgramados.push(idYaExpirada);
       }
     }
 
@@ -354,13 +353,15 @@ export const programarNotificacionesTarea = async (tarea, opciones = {}) => {
       JSON.stringify(idsProgramados)
     );
 
+    console.log('Notificaciones programadas:', idsProgramados);
+
     return {
       ok: true,
       ids: idsProgramados,
       mensaje: 'Notificaciones programadas correctamente.',
     };
   } catch (error) {
-    console.log('Error programando notificaciones de tarea:', error.message);
+    console.log('Error programando notificaciones de tarea:', error);
 
     return {
       ok: false,

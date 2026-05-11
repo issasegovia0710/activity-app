@@ -16,7 +16,10 @@ import ActivitisDashScreen from './src/screens/ActivitisDashScreen';
 import EstadisticasScreen from './src/screens/EstadisticasScreen';
 import AjustesScreen from './src/screens/AjustesScreen';
 
-import { inicializarNotificaciones } from './src/utils/notificacionesTareas';
+import {
+  inicializarNotificaciones,
+  probarNotificacionLocal,
+} from './src/utils/notificacionesTareas';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('Login');
@@ -34,6 +37,12 @@ export default function App() {
   const iniciarAplicacion = async () => {
     try {
       await inicializarNotificaciones();
+
+      // PRUEBA TEMPORAL:
+      // Debe pedir permisos y mandar una notificación a los 2 segundos.
+      // Cuando ya funcione, puedes borrar esta línea.
+      await probarNotificacionLocal();
+
       await revisarSesion();
     } catch (error) {
       console.log('Error al iniciar aplicación:', error.message);
