@@ -28,6 +28,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   ];
 
   static const int veinticuatroHorasMs = 24 * 60 * 60 * 1000;
+  static const Duration tiempoExtraParaCumplir = Duration(hours: 1);
 
   Map<String, dynamic>? usuario;
   int xpTotal = 0;
@@ -590,21 +591,40 @@ class _DashboardScreenState extends State<DashboardScreen>
       return 'futura';
     }
 
-    if ((fechaInicio.isBefore(actual) || fechaInicio.isAtSameMomentAs(actual)) &&
-        fechaFin != null &&
-        (actual.isBefore(fechaFin) || actual.isAtSameMomentAs(fechaFin))) {
-      return 'en_proceso';
-    }
-
-    if (fechaFin != null && fechaFin.isBefore(actual)) {
-      return 'vencida';
-    }
-
-    if (fechaInicio.isBefore(actual) && fechaFin == null) {
+    if (fechaFin == null) {
       return 'atrasada';
     }
 
-    return 'activa';
+    DateTime fechaFinNormalizada = fechaFin;
+
+    if (fechaFinNormalizada.isBefore(fechaInicio) ||
+        fechaFinNormalizada.isAtSameMomentAs(fechaInicio)) {
+      fechaFinNormalizada = fechaFinNormalizada.add(const Duration(days: 1));
+    }
+
+    final limiteParaCumplir = fechaFinNormalizada.add(tiempoExtraParaCumplir);
+
+    if (actual.isBefore(limiteParaCumplir)) {
+      return 'en_proceso';
+    }
+
+    return 'vencida';
+  }
+
+  DateTime? obtenerLimiteParaCumplir(
+    DateTime? fechaInicio,
+    DateTime? fechaFin,
+  ) {
+    if (fechaInicio == null || fechaFin == null) return null;
+
+    DateTime fechaFinNormalizada = fechaFin;
+
+    if (fechaFinNormalizada.isBefore(fechaInicio) ||
+        fechaFinNormalizada.isAtSameMomentAs(fechaInicio)) {
+      fechaFinNormalizada = fechaFinNormalizada.add(const Duration(days: 1));
+    }
+
+    return fechaFinNormalizada.add(tiempoExtraParaCumplir);
   }
 
   Map<String, dynamic> mapearActividadAMision(Map<String, dynamic> actividad) {
@@ -615,6 +635,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       fechaInicio,
       fechaFin,
       ahoraTick,
+    );
+    final fechaLimiteCumplimiento = obtenerLimiteParaCumplir(
+      fechaInicio,
+      fechaFin,
     );
 
     final valorExp = toInt(actividad['valor_exp'], 0);
@@ -631,8 +655,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       'noCumplida': estatusEsNoCumplido(estatus),
       'fechaInicio': fechaInicio,
       'fechaFin': fechaFin,
+      'fechaLimiteCumplimiento': fechaLimiteCumplimiento,
       'fechaInicioTexto': formatearFechaHora(fechaInicio),
       'fechaFinTexto': formatearFechaHora(fechaFin),
+      'fechaLimiteTexto': formatearFechaHora(fechaLimiteCumplimiento),
       'fechaCorta': formatearFechaCorta(fechaInicio),
       'horaInicio': formatearHora(fechaInicio),
       'horaFinal': formatearHora(fechaFin),
@@ -705,13 +731,19 @@ class _DashboardScreenState extends State<DashboardScreen>
         fechaFin,
         ahoraTick,
       );
+      final fechaLimiteCumplimiento = obtenerLimiteParaCumplir(
+        fechaInicio,
+        fechaFin,
+      );
 
       return {
         ...mision,
         'fechaInicio': fechaInicio,
         'fechaFin': fechaFin,
+        'fechaLimiteCumplimiento': fechaLimiteCumplimiento,
         'fechaInicioTexto': formatearFechaHora(fechaInicio),
         'fechaFinTexto': formatearFechaHora(fechaFin),
+        'fechaLimiteTexto': formatearFechaHora(fechaLimiteCumplimiento),
         'estadoTiempo': estadoTiempo,
         'vencida': estadoTiempo == 'vencida',
         'atrasada': estadoTiempo == 'atrasada',
@@ -758,6 +790,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         mision,
         [
           'fecha_no_cumplida',
+          'fechaLimiteCumplimiento',
           'fecha_cierre',
           'fecha_actualizacion',
           'updated_at',
@@ -2628,7 +2661,8 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                     if (enProceso)
                       buildInfoBox(
                         icon: Icons.play_circle_outline,
-                        text: 'La misión está dentro de su rango de tiempo.',
+                        text:
+                            'Puedes cumplirla hasta ${mision['fechaLimiteTexto'] ?? '--/-- --:--'}.',
                         bg: const Color(0xFFD1FAE5),
                         color: const Color(0xFF047857),
                       ),
@@ -2660,7 +2694,7 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                       buildInfoBox(
                         icon: Icons.warning_amber_outlined,
                         text:
-                            'Vencida. Si es autoacompletable, se cerrará al actualizar.',
+                            'Tiempo agotado. Debe cerrarse como no cumplida y aplicar penalización.',
                         bg: const Color(0xFFFEE2E2),
                         color: const Color(0xFFB91C1C),
                       ),
