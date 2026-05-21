@@ -4,6 +4,7 @@ import '../config/app_themes.dart';
 import '../config/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../utils/notificaciones_tareas.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -218,7 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     introController.forward();
 
-    timer = Timer.periodic(const Duration(seconds: 15), (_) {
+    timer = Timer.periodic(const Duration(seconds: 15), (_) async {
       if (!mounted) return;
 
       setState(() {
@@ -655,6 +656,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       'noCumplida': estatusEsNoCumplido(estatus),
       'fechaInicio': fechaInicio,
       'fechaFin': fechaFin,
+      'fechaInicioNotificacion': fechaInicio,
+      'fechaExpiracion': fechaLimiteCumplimiento,
       'fechaLimiteCumplimiento': fechaLimiteCumplimiento,
       'fechaInicioTexto': formatearFechaHora(fechaInicio),
       'fechaFinTexto': formatearFechaHora(fechaFin),
@@ -740,6 +743,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         ...mision,
         'fechaInicio': fechaInicio,
         'fechaFin': fechaFin,
+        'fechaInicioNotificacion': fechaInicio,
+        'fechaExpiracion': fechaLimiteCumplimiento,
         'fechaLimiteCumplimiento': fechaLimiteCumplimiento,
         'fechaInicioTexto': formatearFechaHora(fechaInicio),
         'fechaFinTexto': formatearFechaHora(fechaFin),
@@ -757,6 +762,51 @@ class _DashboardScreenState extends State<DashboardScreen>
     }).toList();
 
     return ordenarMisiones(actualizadas);
+  }
+
+  Future<void> sincronizarNotificacionesMisiones(
+    List<Map<String, dynamic>> misionesDashboard,
+  ) async {
+    try {
+      for (final mision in misionesDashboard) {
+        final idMision = mision['id'] ??
+            mision['id_tarea'] ??
+            mision['idActividad'] ??
+            mision['id_actividad'];
+
+        if (idMision == null) {
+          continue;
+        }
+
+        final estadoTiempo = mision['estadoTiempo']?.toString() ?? '';
+        final estatus = mision['estatus'];
+
+        final debeCancelar = estatusEsTerminado(estatus) ||
+            estatusEsNoCumplido(estatus) ||
+            estadoTiempo == 'completada' ||
+            estadoTiempo == 'no_cumplida' ||
+            estadoTiempo == 'vencida';
+
+        if (debeCancelar) {
+          await NotificacionesTareas.cancelarNotificacionesTarea(idMision);
+          continue;
+        }
+
+        final debeProgramar = estadoTiempo == 'por_abrir' ||
+            estadoTiempo == 'futura' ||
+            estadoTiempo == 'en_proceso' ||
+            estadoTiempo == 'atrasada' ||
+            estadoTiempo == 'sin_fecha';
+
+        if (!debeProgramar) {
+          continue;
+        }
+
+        await NotificacionesTareas.programarNotificacionesTarea(mision);
+      }
+    } catch (error) {
+      debugPrint('Error sincronizando notificaciones del dashboard: $error');
+    }
   }
 
   bool esPendienteFiltro(Map<String, dynamic> mision) {
@@ -1034,6 +1084,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       final misionesDashboard = obtenerMisionesParaDashboard(actividades);
 
+      await sincronizarNotificacionesMisiones(misionesDashboard);
+
       if (!mounted) return;
 
       setState(() {
@@ -1068,6 +1120,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       final nuevoXp = xpTotal + valorExp;
 
       await ApiService.put('/actividades/${misionSeleccionada['id']}/completar');
+      await NotificacionesTareas.cancelarNotificacionesTarea(
+        misionSeleccionada['id'],
+      );
       await guardarExpEnBackend(nuevoXp);
 
       if (!mounted) return;
@@ -2122,7 +2177,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          cerrandoSesion ? 'Cerrando sesión...' : '¿Cerrar sesión?',
+                          cerrandoSesion
+                              ? 'Cerrando sesión...'
+                              : '¿Cerrar sesión?',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: tema.texto,
