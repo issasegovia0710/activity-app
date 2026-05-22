@@ -68,10 +68,9 @@ class NotificacionesTareas {
   }
 
   static Future<void> _crearCanalAndroid() async {
-    final androidPlugin = _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
+    final androidPlugin =
+        _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidPlugin == null) {
       return;
@@ -90,44 +89,10 @@ class NotificacionesTareas {
     await androidPlugin.createNotificationChannel(channel);
   }
 
-  static Future<int?> probarNotificacionInmediataIos() async {
-    try {
-      final tienePermiso = await inicializarNotificaciones();
-
-      debugPrint('Permiso notificaciones iOS: $tienePermiso');
-
-      if (!tienePermiso) {
-        debugPrint('No hay permiso para mostrar notificaciones.');
-        return null;
-      }
-
-      final id = _generarIdNotificacion(
-        'prueba-inmediata-ios',
-        DateTime.now().millisecondsSinceEpoch.toString(),
-      );
-
-      await _plugin.show(
-        id: id,
-        title: 'Prueba inmediata ✅',
-        body: 'Si ves esto, iOS ya permite notificaciones locales.',
-        notificationDetails: _detallesNotificacion(),
-        payload: jsonEncode({'tipo': 'prueba_inmediata_ios'}),
-      );
-
-      debugPrint('Notificación inmediata enviada: $id');
-
-      return id;
-    } catch (error) {
-      debugPrint('Error enviando notificación inmediata iOS: $error');
-      return null;
-    }
-  }
-
   static Future<bool> _solicitarPermisoAndroid() async {
-    final androidPlugin = _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
+    final androidPlugin =
+        _plugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidPlugin == null) {
       return true;
@@ -139,10 +104,9 @@ class NotificacionesTareas {
   }
 
   static Future<bool> _solicitarPermisoIos() async {
-    final iosPlugin = _plugin
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >();
+    final iosPlugin =
+        _plugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
 
     if (iosPlugin == null) {
       return true;
@@ -178,7 +142,10 @@ class NotificacionesTareas {
       interruptionLevel: InterruptionLevel.active,
     );
 
-    return const NotificationDetails(android: androidDetails, iOS: iosDetails);
+    return const NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
   }
 
   static String _limpiarTexto(dynamic valor) {
@@ -228,7 +195,14 @@ class NotificacionesTareas {
     final minutes = int.tryParse(match.group(5) ?? '0') ?? 0;
     final seconds = int.tryParse(match.group(6) ?? '0') ?? 0;
 
-    return DateTime(year, month, day, hours, minutes, seconds);
+    return DateTime(
+      year,
+      month,
+      day,
+      hours,
+      minutes,
+      seconds,
+    );
   }
 
   static String obtenerIdTarea(Map<String, dynamic> tarea) {
@@ -261,10 +235,24 @@ class NotificacionesTareas {
     return titulo;
   }
 
+  static DateTime? obtenerFechaInicio(Map<String, dynamic> tarea) {
+    return convertirFechaLocal(
+      tarea['fechaInicioNotificacion'] ??
+          tarea['fechaInicio'] ??
+          tarea['fecha_inicio'] ??
+          tarea['fechaHabilitacion'] ??
+          tarea['fecha_habilitacion'] ??
+          tarea['inicio'] ??
+          tarea['empieza'],
+    );
+  }
+
   static DateTime? obtenerFechaExpiracion(Map<String, dynamic> tarea) {
     return convertirFechaLocal(
       tarea['fechaExpiracion'] ??
           tarea['fecha_expiracion'] ??
+          tarea['fechaLimiteCumplimiento'] ??
+          tarea['fecha_limite_cumplimiento'] ??
           tarea['fechaVencimiento'] ??
           tarea['fecha_vencimiento'] ??
           tarea['fechaFin'] ??
@@ -275,7 +263,10 @@ class NotificacionesTareas {
     );
   }
 
-  static int _generarIdNotificacion(String idTarea, String tipo) {
+  static int _generarIdNotificacion(
+    String idTarea,
+    String tipo,
+  ) {
     final texto = '$idTarea-$tipo';
     int hash = 0;
 
@@ -300,39 +291,119 @@ class NotificacionesTareas {
     return tz.TZDateTime.from(fecha, tz.local);
   }
 
-  static Future<int?> probarNotificacionLocal() async {
+  static DateTime? _fechaFuturaSegura(
+    DateTime? fecha, {
+    int segundosMinimos = 5,
+  }) {
+    if (fecha == null) {
+      return null;
+    }
+
+    final ahora = DateTime.now();
+    final minimo = ahora.add(Duration(seconds: segundosMinimos));
+
+    if (fecha.isBefore(minimo) || fecha.isAtSameMomentAs(minimo)) {
+      return null;
+    }
+
+    return fecha;
+  }
+
+  static Future<void> _programarNotificacion({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime fecha,
+    required Map<String, dynamic> payload,
+  }) async {
+    await _plugin.zonedSchedule(
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: _toTzDateTime(fecha),
+      notificationDetails: _detallesNotificacion(),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: jsonEncode(payload),
+    );
+  }
+
+  static Future<int?> probarNotificacionInmediataIos() async {
     try {
       final tienePermiso = await inicializarNotificaciones();
 
+      debugPrint('Permiso notificaciones iOS inmediata: $tienePermiso');
+
       if (!tienePermiso) {
-        debugPrint('No se pudo probar notificación porque no hay permiso.');
+        debugPrint('No hay permiso para mostrar notificaciones.');
         return null;
       }
 
       final id = _generarIdNotificacion(
-        'prueba',
+        'prueba-inmediata-ios',
         DateTime.now().millisecondsSinceEpoch.toString(),
       );
 
-      await _plugin.zonedSchedule(
+      await _plugin.show(
         id: id,
-        title: 'Prueba de notificación ✅',
-        body: 'Si ves esto, las notificaciones locales ya funcionan.',
-        scheduledDate: tz.TZDateTime.now(
-          tz.local,
-        ).add(const Duration(seconds: 2)),
+        title: 'Prueba inmediata ✅',
+        body: 'Si ves esto, iOS ya permite notificaciones locales.',
         notificationDetails: _detallesNotificacion(),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        payload: jsonEncode({'tipo': 'prueba_notificacion'}),
+        payload: jsonEncode({
+          'tipo': 'prueba_inmediata_ios',
+        }),
       );
 
-      debugPrint('Notificación de prueba programada: $id');
+      debugPrint('Notificación inmediata enviada: $id');
 
       return id;
     } catch (error) {
-      debugPrint('Error probando notificación local: $error');
+      debugPrint('Error enviando notificación inmediata iOS: $error');
       return null;
     }
+  }
+
+  static Future<int?> probarNotificacionProgramadaIos() async {
+    try {
+      final tienePermiso = await inicializarNotificaciones();
+
+      debugPrint('Permiso notificaciones iOS programada: $tienePermiso');
+
+      if (!tienePermiso) {
+        debugPrint('No hay permiso para programar notificaciones.');
+        return null;
+      }
+
+      final id = _generarIdNotificacion(
+        'prueba-programada-ios',
+        DateTime.now().millisecondsSinceEpoch.toString(),
+      );
+
+      final fechaProgramada = DateTime.now().add(
+        const Duration(seconds: 20),
+      );
+
+      await _programarNotificacion(
+        id: id,
+        title: 'Prueba programada ⏰',
+        body: 'Esta notificación estaba programada, no salió por el botón.',
+        fecha: fechaProgramada,
+        payload: {
+          'tipo': 'prueba_programada_ios',
+        },
+      );
+
+      debugPrint('Notificación programada iOS: $id');
+      debugPrint('Fecha programada: $fechaProgramada');
+
+      return id;
+    } catch (error) {
+      debugPrint('Error programando notificación iOS: $error');
+      return null;
+    }
+  }
+
+  static Future<int?> probarNotificacionLocal() async {
+    return probarNotificacionProgramadaIos();
   }
 
   static Future<void> cancelarNotificacionesTarea(dynamic idTarea) async {
@@ -384,67 +455,88 @@ class NotificacionesTareas {
 
       final idTarea = obtenerIdTarea(tarea);
       final tituloTarea = obtenerTituloTarea(tarea);
+      final fechaInicio = obtenerFechaInicio(tarea);
       final fechaExpiracion = obtenerFechaExpiracion(tarea);
 
       await cancelarNotificacionesTarea(idTarea);
 
       final idsProgramados = <int>[];
-      final ahora = DateTime.now();
 
-      final idHabilitada = _generarIdNotificacion(idTarea, 'habilitada');
-
-      await _plugin.zonedSchedule(
-        id: idHabilitada,
-        title: 'Tarea habilitada ✅',
-        body: '$tituloTarea ya está activa.',
-        scheduledDate: tz.TZDateTime.now(
-          tz.local,
-        ).add(const Duration(seconds: 2)),
-        notificationDetails: _detallesNotificacion(),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        payload: jsonEncode({'tipo': 'tarea_habilitada', 'idTarea': idTarea}),
+      final fechaInicioSegura = _fechaFuturaSegura(
+        fechaInicio,
+        segundosMinimos: 5,
       );
 
-      idsProgramados.add(idHabilitada);
+      if (fechaInicioSegura != null) {
+        final idHabilitada = _generarIdNotificacion(
+          idTarea,
+          'habilitada',
+        );
+
+        await _programarNotificacion(
+          id: idHabilitada,
+          title: 'Tarea habilitada ✅',
+          body: '$tituloTarea ya está activa.',
+          fecha: fechaInicioSegura,
+          payload: {
+            'tipo': 'tarea_habilitada',
+            'idTarea': idTarea,
+          },
+        );
+
+        idsProgramados.add(idHabilitada);
+      }
 
       if (fechaExpiracion != null) {
         final diezMinutosAntes = fechaExpiracion.subtract(
           const Duration(minutes: 10),
         );
 
-        if (diezMinutosAntes.isAfter(ahora)) {
+        final fechaDiezMinutosSegura = _fechaFuturaSegura(
+          diezMinutosAntes,
+          segundosMinimos: 5,
+        );
+
+        if (fechaDiezMinutosSegura != null) {
           final idDiezMinutos = _generarIdNotificacion(
             idTarea,
             '10_minutos_antes',
           );
 
-          await _plugin.zonedSchedule(
+          await _programarNotificacion(
             id: idDiezMinutos,
             title: 'Tu tarea está por expirar ⏳',
             body: '$tituloTarea vence en 10 minutos.',
-            scheduledDate: _toTzDateTime(diezMinutosAntes),
-            notificationDetails: _detallesNotificacion(),
-            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-            payload: jsonEncode({
+            fecha: fechaDiezMinutosSegura,
+            payload: {
               'tipo': 'tarea_10_minutos_antes',
               'idTarea': idTarea,
-            }),
+            },
           );
 
           idsProgramados.add(idDiezMinutos);
         }
 
-        if (fechaExpiracion.isAfter(ahora)) {
-          final idExpirada = _generarIdNotificacion(idTarea, 'expirada');
+        final fechaExpiracionSegura = _fechaFuturaSegura(
+          fechaExpiracion,
+          segundosMinimos: 5,
+        );
 
-          await _plugin.zonedSchedule(
+        if (fechaExpiracionSegura != null) {
+          final idExpirada = _generarIdNotificacion(
+            idTarea,
+            'expirada',
+          );
+
+          await _programarNotificacion(
             id: idExpirada,
             title: 'Tarea expirada ⚠️',
             body: '$tituloTarea ya expiró.',
-            scheduledDate: _toTzDateTime(fechaExpiracion),
-            notificationDetails: _detallesNotificacion(),
-            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-            payload: jsonEncode({'tipo': 'tarea_expirada', 'idTarea': idTarea}),
+            fecha: fechaExpiracionSegura,
+            payload: {
+              'tipo': 'tarea_expirada',
+              'idTarea': idTarea,
+            },
           );
 
           idsProgramados.add(idExpirada);
@@ -456,17 +548,25 @@ class NotificacionesTareas {
         jsonEncode(idsProgramados),
       );
 
-      debugPrint('Notificaciones programadas: $idsProgramados');
+      debugPrint('Notificaciones programadas para tarea $idTarea: $idsProgramados');
+      debugPrint('Fecha inicio detectada: $fechaInicio');
+      debugPrint('Fecha expiración detectada: $fechaExpiracion');
 
       return {
         'ok': true,
         'ids': idsProgramados,
-        'mensaje': 'Notificaciones programadas correctamente.',
+        'mensaje': idsProgramados.isEmpty
+            ? 'No había fechas futuras para programar.'
+            : 'Notificaciones programadas correctamente.',
       };
     } catch (error) {
       debugPrint('Error programando notificaciones de tarea: $error');
 
-      return {'ok': false, 'ids': <int>[], 'mensaje': error.toString()};
+      return {
+        'ok': false,
+        'ids': <int>[],
+        'mensaje': error.toString(),
+      };
     }
   }
 }

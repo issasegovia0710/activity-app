@@ -97,6 +97,7 @@ class _AjustesScreenState extends State<AjustesScreen>
         curve: Curves.easeOutBack,
       ),
     );
+    
 
     floatAnimation = Tween<double>(
       begin: 0,

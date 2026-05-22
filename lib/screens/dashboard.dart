@@ -2805,6 +2805,8 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
     );
   }
 
+  
+
   Widget buildScheduleBox({
     required IconData icon,
     required String text,
@@ -2880,6 +2882,8 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
       ),
     );
   }
+
+  
 
   Widget buildCompleteButton({
     required bool completada,
