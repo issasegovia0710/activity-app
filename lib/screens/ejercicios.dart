@@ -80,6 +80,7 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
   bool guardandoEjercicio = false;
   bool guardandoRutina = false;
   int? idRutinaAccionando;
+  int? idRutinaEditando;
   int? idEjercicioAccionando;
 
   bool mostrarPanelEjercicio = false;
@@ -255,6 +256,29 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
     final m = hora.minute.toString().padLeft(2, '0');
 
     return '$h:$m';
+  }
+
+  TimeOfDay horaDesdeTexto(dynamic valor) {
+    final texto = textoSeguro(valor);
+
+    if (texto.isEmpty) {
+      return const TimeOfDay(hour: 7, minute: 0);
+    }
+
+    final partes = texto.split(':');
+
+    if (partes.length < 2) {
+      return const TimeOfDay(hour: 7, minute: 0);
+    }
+
+    final horas = int.tryParse(partes[0]) ?? 7;
+    final minutos = int.tryParse(partes[1]) ?? 0;
+
+    if (horas < 0 || horas > 23 || minutos < 0 || minutos > 59) {
+      return const TimeOfDay(hour: 7, minute: 0);
+    }
+
+    return TimeOfDay(hour: horas, minute: minutos);
   }
 
   List<String> ordenarDiasSeleccionados(Set<String> dias) {
@@ -777,6 +801,7 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
     rutinaDescripcionController.clear();
     rutinaDuracionController.text = '45';
     ejerciciosSeleccionados = [];
+    idRutinaEditando = null;
 
     setState(() {
       diasSeleccionados = {'L', 'M', 'MI', 'J', 'V'};
@@ -902,6 +927,9 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       ejerciciosSeleccionados.add({
         'ejercicio_id': id,
         'nombre': ejercicio['nombre'],
+        'descripcion': ejercicio['descripcion'],
+        'grupo_muscular': ejercicio['grupo_muscular'],
+        'tipo': ejercicio['tipo'],
         'series': 3,
         'repeticiones': '12',
         'duracion_minutos': toInt(ejercicio['duracion_minutos'], 5),
@@ -942,6 +970,87 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
     });
   }
 
+  Map<String, dynamic>? ejercicioCatalogoPorId(dynamic id) {
+    for (final ejercicio in ejercicios) {
+      if (ejercicio['id'].toString() == id.toString()) {
+        return ejercicio;
+      }
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic> normalizarDetalleRutinaParaEdicion(dynamic raw) {
+    final item = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final ejercicioId = item['ejercicio_id'] ?? item['ejercicioId'] ?? item['id'];
+    final ejercicioBase = ejercicioCatalogoPorId(ejercicioId) ?? <String, dynamic>{};
+
+    return {
+      'ejercicio_id': ejercicioId,
+      'nombre': item['nombre'] ??
+          item['ejercicio_nombre'] ??
+          ejercicioBase['nombre'] ??
+          'Ejercicio',
+      'descripcion': item['descripcion'] ??
+          item['ejercicio_descripcion'] ??
+          ejercicioBase['descripcion'],
+      'grupo_muscular': item['grupo_muscular'] ?? ejercicioBase['grupo_muscular'],
+      'tipo': item['tipo'] ?? ejercicioBase['tipo'],
+      'series': toInt(item['series'], 3),
+      'repeticiones': item['repeticiones']?.toString() ?? '12',
+      'duracion_minutos': toInt(
+        item['duracion_minutos'] ?? ejercicioBase['duracion_minutos'],
+        5,
+      ),
+      'descanso_segundos': toInt(item['descanso_segundos'], 60),
+      'valor_exp': toInt(
+        item['valor_exp'] ?? item['exp'] ?? ejercicioBase['valor_exp'],
+        10,
+      ),
+    };
+  }
+
+  void cargarRutinaEnFormulario(Map<String, dynamic> rutina) {
+    final ejerciciosRutina = rutina['ejercicios'] is List
+        ? rutina['ejercicios'] as List
+        : [];
+
+    setState(() {
+      idRutinaEditando = toInt(rutina['id'], 0);
+      rutinaNombreController.text = textoSeguro(rutina['nombre']);
+      rutinaDescripcionController.text = textoSeguro(rutina['descripcion']);
+      rutinaDuracionController.text = toInt(
+        rutina['duracion_minutos'],
+        45,
+      ).toString();
+      diasSeleccionados = obtenerDiasComoSet(rutina['dias']);
+      if (diasSeleccionados.isEmpty) {
+        diasSeleccionados = {'L', 'M', 'MI', 'J', 'V'};
+      }
+      horaInicio = horaDesdeTexto(rutina['hora_inicio']);
+      rutinaActiva = boolDesdeValor(rutina['activa'], true);
+      ejerciciosSeleccionados = ejerciciosRutina
+          .map((item) => normalizarDetalleRutinaParaEdicion(item))
+          .where((item) => item['ejercicio_id'] != null)
+          .toList();
+      mostrarPanelRutina = true;
+      mostrarPanelEjercicio = false;
+    });
+  }
+
+  void moverEjercicioSeleccionado(int index, int direccion) {
+    final nuevoIndex = index + direccion;
+
+    if (nuevoIndex < 0 || nuevoIndex >= ejerciciosSeleccionados.length) {
+      return;
+    }
+
+    setState(() {
+      final item = ejerciciosSeleccionados.removeAt(index);
+      ejerciciosSeleccionados.insert(nuevoIndex, item);
+    });
+  }
+
   int get duracionCalculadaRutina {
     int total = 0;
 
@@ -966,6 +1075,7 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
     final nombre = rutinaNombreController.text.trim();
     final descripcion = rutinaDescripcionController.text.trim();
     final duracion = toInt(rutinaDuracionController.text, 45);
+    final editando = idRutinaEditando != null && idRutinaEditando! > 0;
 
     if (nombre.isEmpty) {
       mostrarMensaje(
@@ -1019,23 +1129,30 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
         };
       }).toList();
 
-      final response = await ApiService.post(
-        '/actividades/ejercicios/rutinas',
-        {
-          'nombre': nombre,
-          'descripcion': descripcion.isEmpty ? null : descripcion,
-          'dias': ordenarDiasSeleccionados(diasSeleccionados),
-          'hora_inicio': horaTexto(horaInicio),
-          'duracion_minutos': duracion,
-          'activa': rutinaActiva,
-          'ejercicios': detalles,
-        },
-      );
+      final body = {
+        'nombre': nombre,
+        'descripcion': descripcion.isEmpty ? null : descripcion,
+        'dias': ordenarDiasSeleccionados(diasSeleccionados),
+        'hora_inicio': horaTexto(horaInicio),
+        'duracion_minutos': duracion,
+        'activa': rutinaActiva,
+        'ejercicios': detalles,
+      };
 
-      Map<String, dynamic>? rutinaCreada;
+      final response = editando
+          ? await ApiService.put(
+              '/actividades/ejercicios/rutinas/$idRutinaEditando',
+              body,
+            )
+          : await ApiService.post(
+              '/actividades/ejercicios/rutinas',
+              body,
+            );
+
+      Map<String, dynamic>? rutinaGuardada;
 
       if (response is Map<String, dynamic> && response['rutina'] is Map) {
-        rutinaCreada = normalizarRutina(
+        rutinaGuardada = normalizarRutina(
           Map<String, dynamic>.from(response['rutina']),
         );
       }
@@ -1043,8 +1160,20 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       if (!mounted) return;
 
       setState(() {
-        if (rutinaCreada != null) {
-          rutinas.insert(0, rutinaCreada);
+        if (rutinaGuardada != null) {
+          if (editando) {
+            final index = rutinas.indexWhere(
+              (item) => item['id'].toString() == idRutinaEditando.toString(),
+            );
+
+            if (index == -1) {
+              rutinas.insert(0, rutinaGuardada!);
+            } else {
+              rutinas[index] = rutinaGuardada!;
+            }
+          } else {
+            rutinas.insert(0, rutinaGuardada!);
+          }
         }
 
         mostrarPanelRutina = false;
@@ -1056,8 +1185,10 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       if (!mounted) return;
 
       mostrarMensaje(
-        titulo: 'Rutina agregada',
-        mensaje: 'Tu rutina de ejercicio se guardó correctamente.',
+        titulo: editando ? 'Rutina actualizada' : 'Rutina agregada',
+        mensaje: editando
+            ? 'La rutina se editó correctamente.'
+            : 'Tu rutina de ejercicio se guardó correctamente.',
       );
     } catch (error) {
       if (!mounted) return;
@@ -1066,7 +1197,9 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
         titulo: 'Error',
         mensaje: limpiarError(
           error,
-          'No se pudo guardar la rutina.',
+          editando
+              ? 'No se pudo editar la rutina.'
+              : 'No se pudo guardar la rutina.',
         ),
       );
     } finally {
@@ -1699,12 +1832,17 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
             onTap: guardandoRutina
                 ? null
                 : () {
-                    setState(() {
-                      mostrarPanelRutina = !mostrarPanelRutina;
+                    if (mostrarPanelRutina) {
+                      limpiarFormularioRutina();
+                      setState(() {
+                        mostrarPanelRutina = false;
+                      });
+                      return;
+                    }
 
-                      if (mostrarPanelRutina) {
-                        mostrarPanelEjercicio = false;
-                      }
+                    setState(() {
+                      mostrarPanelRutina = true;
+                      mostrarPanelEjercicio = false;
                     });
                   },
           ),
@@ -1877,8 +2015,10 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
         children: [
           buildSectionTitle(
             icon: Icons.assignment_add,
-            title: 'Nueva rutina',
-            subtitle: 'Rutinas de 40 a 60 minutos.',
+            title: idRutinaEditando == null ? 'Nueva rutina' : 'Editar rutina',
+            subtitle: idRutinaEditando == null
+                ? 'Rutinas de 40 a 60 minutos.'
+                : 'Puedes reordenar ejercicios y editar tiempos, series, reps y XP.',
             color: tema.primario,
           ),
           const SizedBox(height: 14),
@@ -1933,7 +2073,11 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
                     )
                   : const Icon(Icons.save_outlined),
               label: Text(
-                guardandoRutina ? 'Guardando...' : 'Guardar rutina',
+                guardandoRutina
+                    ? 'Guardando...'
+                    : idRutinaEditando == null
+                        ? 'Guardar rutina'
+                        : 'Guardar cambios',
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
                 ),
@@ -2724,13 +2868,13 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
     }
 
     return Column(
-      children: ejerciciosSeleccionados.map((item) {
-        return buildSelectedExerciseCard(item);
+      children: ejerciciosSeleccionados.asMap().entries.map((entry) {
+        return buildSelectedExerciseCard(entry.value, entry.key);
       }).toList(),
     );
   }
 
-  Widget buildSelectedExerciseCard(Map<String, dynamic> item) {
+  Widget buildSelectedExerciseCard(Map<String, dynamic> item, int index) {
     final TextEditingController seriesController = TextEditingController(
       text: toInt(item['series'], 3).toString(),
     );
@@ -2761,11 +2905,24 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
         children: [
           Row(
             children: [
-              const Icon(
-                Icons.drag_indicator,
-                color: Color(0xFF94A3B8),
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0EA5E9),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   item['nombre']?.toString() ?? 'Ejercicio',
@@ -2776,25 +2933,68 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
                   ),
                 ),
               ),
-              GestureDetector(
-                onTap: () {
-                  quitarEjercicioDeRutina(item);
-                },
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: tema.peligro.withOpacity(0.12),
-                    shape: BoxShape.circle,
+              Row(
+                children: [
+                  buildMiniOrderButton(
+                    icon: Icons.keyboard_arrow_up,
+                    enabled: index > 0,
+                    onTap: () {
+                      moverEjercicioSeleccionado(index, -1);
+                    },
                   ),
-                  child: Icon(
-                    Icons.close,
-                    color: tema.peligro,
-                    size: 18,
+                  const SizedBox(width: 5),
+                  buildMiniOrderButton(
+                    icon: Icons.keyboard_arrow_down,
+                    enabled: index < ejerciciosSeleccionados.length - 1,
+                    onTap: () {
+                      moverEjercicioSeleccionado(index, 1);
+                    },
                   ),
-                ),
+                  const SizedBox(width: 5),
+                  GestureDetector(
+                    onTap: () {
+                      quitarEjercicioDeRutina(item);
+                    },
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: tema.peligro.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.close,
+                        color: tema.peligro,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: tema.tarjeta.withOpacity(0.82),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: tema.borde,
+              ),
+            ),
+            child: Text(
+              descripcionEjercicio(item),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tema.textoSuave,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
           ),
           const SizedBox(height: 10),
           Row(
@@ -2875,6 +3075,35 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget buildMiniOrderButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.34,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0EA5E9).withOpacity(0.12),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: const Color(0xFF0EA5E9).withOpacity(0.20),
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: const Color(0xFF0EA5E9),
+            size: 20,
+          ),
+        ),
       ),
     );
   }
@@ -2985,167 +3214,449 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
         ? rutina['ejercicios'] as List
         : [];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: activa
-            ? mezclarConTema(tema.primario, 0.06)
-            : mezclarConTema(tema.textoSuave, 0.08),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: activa ? tema.primario.withOpacity(0.25) : tema.borde,
-          width: 1.2,
+    return GestureDetector(
+      onTap: () {
+        mostrarDetalleRutina(rutina);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: activa
+              ? mezclarConTema(tema.primario, 0.06)
+              : mezclarConTema(tema.textoSuave, 0.08),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: activa ? tema.primario.withOpacity(0.25) : tema.borde,
+            width: 1.2,
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: activa ? tema.primario : tema.textoSuave,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: accionando
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Icon(
-                        activa
-                            ? Icons.fitness_center_outlined
-                            : Icons.pause_circle_outline,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      rutina['nombre']?.toString() ?? 'Rutina',
-                      style: TextStyle(
-                        color: tema.texto,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      rutina['descripcion']?.toString() ??
-                          '${ejerciciosRutina.length} ejercicios en esta rutina',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: tema.textoSuave,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              GestureDetector(
-                onTap: accionando
-                    ? null
-                    : () {
-                        confirmarEliminarRutina(rutina);
-                      },
-                child: Container(
-                  width: 38,
-                  height: 38,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
                   decoration: BoxDecoration(
-                    color: tema.peligro.withOpacity(0.12),
-                    shape: BoxShape.circle,
+                    color: activa ? tema.primario : tema.textoSuave,
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(
-                    Icons.delete_outline,
-                    color: tema.peligro,
-                    size: 20,
+                  child: accionando
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Icon(
+                          activa
+                              ? Icons.fitness_center_outlined
+                              : Icons.pause_circle_outline,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rutina['nombre']?.toString() ?? 'Rutina',
+                        style: TextStyle(
+                          color: tema.texto,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        textoSeguro(rutina['descripcion']).isNotEmpty
+                            ? textoSeguro(rutina['descripcion'])
+                            : '${ejerciciosRutina.length} ejercicios en esta rutina',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tema.textoSuave,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              buildBadge(
-                icon: Icons.calendar_month_outlined,
-                text: etiquetaDias(dias),
-                color: tema.primario,
-              ),
-              buildBadge(
-                icon: Icons.schedule_outlined,
-                text: rutina['hora_inicio']?.toString() ?? '07:00',
-                color: tema.barraXp,
-              ),
-              buildBadge(
-                icon: Icons.timer_outlined,
-                text: '${rutina['duracion_minutos'] ?? 45} min',
-                color: const Color(0xFF0EA5E9),
-              ),
-              buildBadge(
-                icon: Icons.flash_on,
-                text: '${rutina['valor_exp_total'] ?? 0} XP',
-                color: tema.aviso,
-              ),
-              buildBadge(
-                icon: activa
-                    ? Icons.check_circle_outline
-                    : Icons.pause_circle_outline,
-                text: activa ? 'Activa' : 'Pausada',
-                color: activa ? tema.exito : tema.textoSuave,
-              ),
-            ],
-          ),
-          if (ejerciciosRutina.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            buildRoutineExercisesPreview(ejerciciosRutina),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
+                GestureDetector(
                   onTap: accionando
                       ? null
                       : () {
-                          alternarRutinaActiva(rutina);
+                          confirmarEliminarRutina(rutina);
                         },
                   child: Container(
+                    width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: activa ? tema.aviso : tema.exito,
-                      borderRadius: BorderRadius.circular(14),
+                      color: tema.peligro.withOpacity(0.12),
+                      shape: BoxShape.circle,
                     ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      activa ? 'Pausar' : 'Activar',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
+                    child: Icon(
+                      Icons.delete_outline,
+                      color: tema.peligro,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                buildBadge(
+                  icon: Icons.calendar_month_outlined,
+                  text: etiquetaDias(dias),
+                  color: tema.primario,
+                ),
+                buildBadge(
+                  icon: Icons.schedule_outlined,
+                  text: rutina['hora_inicio']?.toString() ?? '07:00',
+                  color: tema.barraXp,
+                ),
+                buildBadge(
+                  icon: Icons.timer_outlined,
+                  text: '${rutina['duracion_minutos'] ?? 45} min',
+                  color: const Color(0xFF0EA5E9),
+                ),
+                buildBadge(
+                  icon: Icons.flash_on,
+                  text: '${rutina['valor_exp_total'] ?? 0} XP',
+                  color: tema.aviso,
+                ),
+                buildBadge(
+                  icon: activa
+                      ? Icons.check_circle_outline
+                      : Icons.pause_circle_outline,
+                  text: activa ? 'Activa' : 'Pausada',
+                  color: activa ? tema.exito : tema.textoSuave,
+                ),
+              ],
+            ),
+            if (ejerciciosRutina.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              buildRoutineExercisesPreview(ejerciciosRutina),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      mostrarDetalleRutina(rutina);
+                    },
+                    child: Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0EA5E9),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        'Ver detalle',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: accionando
+                        ? null
+                        : () {
+                            alternarRutinaActiva(rutina);
+                          },
+                    child: Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: activa ? tema.aviso : tema.exito,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        activa ? 'Pausar' : 'Activar',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void mostrarDetalleRutina(Map<String, dynamic> rutina) {
+    final ejerciciosRutina = rutina['ejercicios'] is List
+        ? rutina['ejercicios'] as List
+        : [];
+    final dias = obtenerDiasComoSet(rutina['dias']);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: tema.tarjeta,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+          contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
+          title: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: tema.primario,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.fitness_center_outlined,
+                  color: Colors.white,
+                  size: 23,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  rutina['nombre']?.toString() ?? 'Rutina',
+                  style: TextStyle(
+                    color: tema.texto,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
             ],
           ),
-        ],
-      ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      buildBadge(
+                        icon: Icons.calendar_month_outlined,
+                        text: etiquetaDias(dias),
+                        color: tema.primario,
+                      ),
+                      buildBadge(
+                        icon: Icons.schedule_outlined,
+                        text: rutina['hora_inicio']?.toString() ?? '07:00',
+                        color: tema.barraXp,
+                      ),
+                      buildBadge(
+                        icon: Icons.timer_outlined,
+                        text: '${rutina['duracion_minutos'] ?? 45} min',
+                        color: const Color(0xFF0EA5E9),
+                      ),
+                      buildBadge(
+                        icon: Icons.flash_on,
+                        text: '${rutina['valor_exp_total'] ?? 0} XP',
+                        color: tema.aviso,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Descripción de la rutina',
+                    style: TextStyle(
+                      color: tema.texto,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    textoSeguro(rutina['descripcion']).isNotEmpty
+                        ? textoSeguro(rutina['descripcion'])
+                        : 'Sin descripción de rutina.',
+                    style: TextStyle(
+                      color: tema.textoSuave,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Ejercicios y cómo hacerlos',
+                    style: TextStyle(
+                      color: tema.texto,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (ejerciciosRutina.isEmpty)
+                    buildMiniEmpty(
+                      icon: Icons.playlist_remove_outlined,
+                      title: 'Sin ejercicios',
+                      text: 'Esta rutina no tiene ejercicios guardados.',
+                    )
+                  else
+                    ...ejerciciosRutina.asMap().entries.map((entry) {
+                      final raw = entry.value;
+                      final ejercicio = raw is Map
+                          ? normalizarDetalleRutinaParaEdicion(raw)
+                          : <String, dynamic>{};
+                      final color = colorPorGrupo(
+                        ejercicio['grupo_muscular']?.toString(),
+                      );
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: color.withOpacity(0.20),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    '${entry.key + 1}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 9),
+                                Expanded(
+                                  child: Text(
+                                    ejercicio['nombre']?.toString() ?? 'Ejercicio',
+                                    style: TextStyle(
+                                      color: tema.texto,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 7,
+                              runSpacing: 7,
+                              children: [
+                                buildBadge(
+                                  icon: Icons.repeat,
+                                  text: '${ejercicio['series']} series',
+                                  color: color,
+                                ),
+                                buildBadge(
+                                  icon: Icons.format_list_numbered,
+                                  text: ejercicio['repeticiones']?.toString() ?? 'por tiempo',
+                                  color: tema.primario,
+                                ),
+                                buildBadge(
+                                  icon: Icons.timer_outlined,
+                                  text: '${ejercicio['duracion_minutos']} min',
+                                  color: const Color(0xFF0EA5E9),
+                                ),
+                                buildBadge(
+                                  icon: Icons.flash_on,
+                                  text: '${ejercicio['valor_exp']} XP',
+                                  color: tema.aviso,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              descripcionEjercicio(ejercicio),
+                              style: TextStyle(
+                                color: tema.textoSuave,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text(
+                'Cerrar',
+                style: TextStyle(
+                  color: tema.textoSuave,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                cargarRutinaEnFormulario(rutina);
+              },
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text(
+                'Editar rutina',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: tema.primario,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
