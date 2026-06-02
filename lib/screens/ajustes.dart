@@ -16,7 +16,7 @@ class _AjustesScreenState extends State<AjustesScreen>
   String temaActual = 'clasico';
 
   static const String appNombre = 'Activity';
-  static const String appVersion = '1.1.0';
+  static const String appVersion = '1.2.0';
 
   Map<String, dynamic>? usuario;
 
@@ -1295,7 +1295,7 @@ class _AjustesScreenState extends State<AjustesScreen>
         const NoticeBox(
           icon: Icons.auto_awesome,
           text:
-              'Versión Activity 1.1.0. Esta sección puede crecer para mostrar soporte, políticas y exportación de progreso.',
+              'Versión Activity 1.2.0. Esta sección puede crecer para mostrar soporte, políticas y exportación de progreso.',
         ),
       ],
     );

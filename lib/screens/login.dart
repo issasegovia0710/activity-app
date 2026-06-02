@@ -531,7 +531,7 @@ class _LoginScreenState extends State<LoginScreen>
                     buildBottomIcons(),
                     const SizedBox(height: 18),
                     const Text(
-                      'v1.1.0 - Activity',
+                      'v1.2.0 - Activity',
                       style: TextStyle(
                         color: Color(0xFF94A3B8),
                         fontSize: 12,

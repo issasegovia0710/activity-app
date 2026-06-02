@@ -5,6 +5,7 @@ import '../config/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../utils/notificaciones_tareas.dart';
+import 'activitis_dash_day.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -30,6 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   static const int veinticuatroHorasMs = 24 * 60 * 60 * 1000;
   static const Duration tiempoExtraParaCumplir = Duration(hours: 1);
+  static const String filtroTodosTipos = '__todos_los_tipos__';
 
   Map<String, dynamic>? usuario;
   int xpTotal = 0;
@@ -41,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   DateTime ahoraTick = DateTime.now();
 
   String filtroMisiones = 'pendientes';
+  String filtroTipoMision = filtroTodosTipos;
 
   bool mostrarLevelUp = false;
   bool mostrarConfirmLogout = false;
@@ -701,8 +704,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         return pesoA.compareTo(pesoB);
       }
 
-      final fechaA = a['fechaInicio'];
-      final fechaB = b['fechaInicio'];
+      final fechaA = a['fechaFin'];
+      final fechaB = b['fechaFin'];
 
       final tiempoA = fechaA is DateTime ? fechaA.millisecondsSinceEpoch : 0;
       final tiempoB = fechaB is DateTime ? fechaB.millisecondsSinceEpoch : 0;
@@ -877,60 +880,143 @@ class _DashboardScreenState extends State<DashboardScreen>
     return fechaDentroDeHoras(fechaReferencia, 48);
   }
 
-  List<Map<String, dynamic>> get misionesFiltradas {
-    List<Map<String, dynamic>> filtradas;
+  String obtenerTipoMision(Map<String, dynamic> mision) {
+    final valor = mision['tipo'] ?? mision['categoria'] ?? 'Sin categoría';
+    final texto = valor.toString().trim();
 
-    if (filtroMisiones == 'proximas') {
-      filtradas = misiones.where(esProximaFiltro).toList();
-    } else if (filtroMisiones == 'vencidas') {
-      filtradas = misiones.where(esVencidaFiltro).toList();
-    } else if (filtroMisiones == 'terminadas') {
-      filtradas = misiones.where(esTerminadaFiltro).toList();
-    } else {
-      filtradas = misiones.where(esPendienteFiltro).toList();
+    if (texto.isEmpty) {
+      return 'Sin categoría';
+    }
+
+    return texto;
+  }
+
+  List<String> get tiposMisionesDisponibles {
+    final tipos = <String>{};
+
+    for (final mision in misiones) {
+      tipos.add(obtenerTipoMision(mision));
+    }
+
+    final lista = tipos.toList();
+
+    lista.sort((a, b) {
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
+
+    return lista;
+  }
+
+  bool coincideFiltroTipoMision(Map<String, dynamic> mision) {
+    if (filtroTipoMision == filtroTodosTipos ||
+        !tiposMisionesDisponibles.contains(filtroTipoMision)) {
+      return true;
+    }
+
+    return obtenerTipoMision(mision).toLowerCase() ==
+        filtroTipoMision.toLowerCase();
+  }
+
+  List<Map<String, dynamic>> obtenerMisionesPorEstado(String filtro) {
+    if (filtro == 'proximas') {
+      return misiones.where(esProximaFiltro).toList();
+    }
+
+    if (filtro == 'vencidas') {
+      return misiones.where(esVencidaFiltro).toList();
+    }
+
+    if (filtro == 'terminadas') {
+      return misiones.where(esTerminadaFiltro).toList();
+    }
+
+    return misiones.where(esPendienteFiltro).toList();
+  }
+
+  DateTime? obtenerFechaOrdenTerminada(Map<String, dynamic> mision) {
+    return obtenerFechaReferencia(
+      mision,
+      [
+        'fechaFin',
+        'fecha_fin',
+        'fechaLimiteCumplimiento',
+        'fecha_completada',
+        'fecha_completado',
+        'completada_en',
+        'terminada_en',
+        'fecha_actualizacion',
+        'updated_at',
+        'fechaInicio',
+        'fecha_inicio',
+      ],
+    );
+  }
+
+  List<Map<String, dynamic>> ordenarTerminadasPorProximidadAFin(
+    List<Map<String, dynamic>> lista,
+  ) {
+    final copia = [...lista];
+
+    copia.sort((a, b) {
+      final fechaA = obtenerFechaOrdenTerminada(a);
+      final fechaB = obtenerFechaOrdenTerminada(b);
+
+      const int distanciaSinFechaMs = 1 << 52;
+
+      final distanciaA = fechaA == null
+          ? distanciaSinFechaMs
+          : fechaA.difference(ahoraTick).inMilliseconds.abs();
+      final distanciaB = fechaB == null
+          ? distanciaSinFechaMs
+          : fechaB.difference(ahoraTick).inMilliseconds.abs();
+
+      if (distanciaA != distanciaB) {
+        return distanciaA.compareTo(distanciaB);
+      }
+
+      final tiempoA = fechaA?.millisecondsSinceEpoch ?? 0;
+      final tiempoB = fechaB?.millisecondsSinceEpoch ?? 0;
+
+      return tiempoB.compareTo(tiempoA);
+    });
+
+    return copia;
+  }
+
+  List<Map<String, dynamic>> get misionesFiltradas {
+    final filtradas = obtenerMisionesPorEstado(filtroMisiones)
+        .where(coincideFiltroTipoMision)
+        .toList();
+
+    if (filtroMisiones == 'terminadas') {
+      return ordenarTerminadasPorProximidadAFin(filtradas);
     }
 
     return ordenarMisiones(filtradas);
   }
 
   int get totalPendientes {
-    return misiones.where(esPendienteFiltro).length;
+    return obtenerMisionesPorEstado('pendientes')
+        .where(coincideFiltroTipoMision)
+        .length;
   }
 
   int get totalProximas {
-    return misiones.where(esProximaFiltro).length;
+    return obtenerMisionesPorEstado('proximas')
+        .where(coincideFiltroTipoMision)
+        .length;
   }
 
   int get totalVencidas {
-    return misiones.where(esVencidaFiltro).length;
+    return obtenerMisionesPorEstado('vencidas')
+        .where(coincideFiltroTipoMision)
+        .length;
   }
 
   int get totalTerminadas {
-    return misiones.where(esTerminadaFiltro).length;
-  }
-
-  String get tituloFiltroActual {
-    if (filtroMisiones == 'proximas') return 'Misiones próximas';
-    if (filtroMisiones == 'vencidas') return 'Misiones vencidas';
-    if (filtroMisiones == 'terminadas') return 'Misiones terminadas';
-
-    return 'Misiones pendientes';
-  }
-
-  String get subtituloFiltroActual {
-    if (filtroMisiones == 'proximas') {
-      return 'Actividades que todavía no inician';
-    }
-
-    if (filtroMisiones == 'vencidas') {
-      return 'Vencidas y no cumplidas recientes';
-    }
-
-    if (filtroMisiones == 'terminadas') {
-      return 'Completadas durante las últimas 48 horas';
-    }
-
-    return 'Actividades activas o listas para completar';
+    return obtenerMisionesPorEstado('terminadas')
+        .where(coincideFiltroTipoMision)
+        .length;
   }
 
   String get textoVacioFiltro {
@@ -1272,6 +1358,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       'nivelInfo': nivelInfo,
       'misiones': misiones,
       'temaId': tema.id,
+      'tema': tema,
     };
 
     if (screenName == 'Misiones') {
@@ -1279,6 +1366,21 @@ class _DashboardScreenState extends State<DashboardScreen>
         context,
         '/misiones',
         arguments: args,
+      );
+      return;
+    }
+
+    if (screenName == 'MisionesDiarias') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          settings: RouteSettings(
+            arguments: args,
+          ),
+          builder: (context) {
+            return const ActivitisDashDayScreen();
+          },
+        ),
       );
       return;
     }
@@ -1563,9 +1665,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(height: 8),
           buildTabsRow(),
           const SizedBox(height: 8),
-          buildPanelHeader(),
-          const SizedBox(height: 8),
           buildMissionFilters(),
+          const SizedBox(height: 8),
+          buildTipoFilterSelect(),
           Expanded(
             child: buildMissionsArea(),
           ),
@@ -1749,6 +1851,15 @@ class _DashboardScreenState extends State<DashboardScreen>
         const SizedBox(width: 8),
         Expanded(
           child: ScreenButton(
+            title: 'Diarias',
+            icon: Icons.home_outlined,
+            color: tema.exito,
+            onPress: () => navegarAScreen('MisionesDiarias'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ScreenButton(
             title: 'Estadísticas',
             icon: Icons.bar_chart_outlined,
             color: tema.barraXp,
@@ -1764,37 +1875,77 @@ class _DashboardScreenState extends State<DashboardScreen>
             onPress: () => navegarAScreen('Ajustes'),
           ),
         ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: cargandoMisiones
+              ? null
+              : () {
+                  cargarMisionesDelDia();
+                },
+          child: Container(
+            width: 72,
+            constraints: const BoxConstraints(minHeight: 58),
+            padding: const EdgeInsets.symmetric(
+              vertical: 8,
+              horizontal: 8,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(17),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.07),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: tema.primario,
+                    shape: BoxShape.circle,
+                  ),
+                  child: cargandoMisiones
+                      ? const Padding(
+                          padding: EdgeInsets.all(7),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.refresh,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                ),
+                const SizedBox(height: 5),
+                const Text(
+                  'Recargar',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF1E293B),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
 
   Widget buildPanelHeader() {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                tituloFiltroActual,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtituloFiltroActual,
-                style: const TextStyle(
-                  color: Color(0xFFC7D2FE),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
         GestureDetector(
           onTap: cargarMisionesDelDia,
           child: Container(
@@ -1916,6 +2067,146 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget buildTipoFilterSelect() {
+    final tipos = tiposMisionesDisponibles;
+    final valorSeguro = filtroTipoMision == filtroTodosTipos ||
+            tipos.contains(filtroTipoMision)
+        ? filtroTipoMision
+        : filtroTodosTipos;
+
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.16),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.24),
+          width: 1.2,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: valorSeguro,
+          isExpanded: true,
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          icon: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: tema.primario,
+          ),
+          selectedItemBuilder: (context) {
+            return [
+              Row(
+                children: const [
+                  Icon(
+                    Icons.category_outlined,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Todas',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              ...tipos.map((tipo) {
+                return Row(
+                  children: [
+                    Icon(
+                      obtenerIconoPorTipo(tipo),
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        tipo,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ];
+          },
+          items: [
+            DropdownMenuItem<String>(
+              value: filtroTodosTipos,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.all_inclusive,
+                    size: 18,
+                    color: tema.primario,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Todas',
+                    style: TextStyle(
+                      color: tema.texto,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ...tipos.map((tipo) {
+              return DropdownMenuItem<String>(
+                value: tipo,
+                child: Row(
+                  children: [
+                    Icon(
+                      obtenerIconoPorTipo(tipo),
+                      size: 18,
+                      color: obtenerColorPorTipo(tipo),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        tipo,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tema.texto,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+
+            setState(() {
+              filtroTipoMision = value;
+            });
+          },
+        ),
       ),
     );
   }
@@ -2805,8 +3096,6 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
     );
   }
 
-  
-
   Widget buildScheduleBox({
     required IconData icon,
     required String text,
@@ -2882,8 +3171,6 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
       ),
     );
   }
-
-  
 
   Widget buildCompleteButton({
     required bool completada,

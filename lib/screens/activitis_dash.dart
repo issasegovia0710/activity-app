@@ -3,24 +3,9 @@ import '../config/app_themes.dart';
 import '../services/api_service.dart';
 
 const List<Map<String, dynamic>> prioridadesActivitis = [
-  {
-    'id': 1,
-    'nombre': 'baja',
-    'etiqueta': 'Baja',
-    'color': Color(0xFF16A34A),
-  },
-  {
-    'id': 2,
-    'nombre': 'media',
-    'etiqueta': 'Media',
-    'color': Color(0xFFF59E0B),
-  },
-  {
-    'id': 3,
-    'nombre': 'alta',
-    'etiqueta': 'Alta',
-    'color': Color(0xFFEF4444),
-  },
+  {'id': 1, 'nombre': 'baja', 'etiqueta': 'Baja'},
+  {'id': 2, 'nombre': 'media', 'etiqueta': 'Media'},
+  {'id': 3, 'nombre': 'alta', 'etiqueta': 'Alta'},
 ];
 
 class ActivitisDashScreen extends StatefulWidget {
@@ -41,7 +26,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
   bool cargando = false;
   bool guardando = false;
 
-  String filtroEstado = 'todas';
+  String filtroEstado = 'en_proceso';
   String busquedaActividades = '';
 
   final TextEditingController buscadorController = TextEditingController();
@@ -54,6 +39,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
   String prioridad = 'media';
   String duracionHoras = '';
   String estatus = 'pendiente';
+  DateTime? fechaCierreEditando;
+  bool fechaCierreManualEditada = false;
 
   bool argsCargados = false;
 
@@ -90,61 +77,27 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     fadeAnimation = Tween<double>(
       begin: 0,
       end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: introController,
-        curve: Curves.easeOut,
-      ),
+    ).animate(CurvedAnimation(parent: introController, curve: Curves.easeOut));
+
+    slideAnimation = Tween<double>(begin: 35, end: 0).animate(
+      CurvedAnimation(parent: introController, curve: Curves.easeOutBack),
     );
 
-    slideAnimation = Tween<double>(
-      begin: 35,
-      end: 0,
-    ).animate(
-      CurvedAnimation(
-        parent: introController,
-        curve: Curves.easeOutBack,
-      ),
-    );
-
-    floatAnimation = Tween<double>(
-      begin: 0,
-      end: -8,
-    ).animate(
-      CurvedAnimation(
-        parent: floatController,
-        curve: Curves.easeInOut,
-      ),
+    floatAnimation = Tween<double>(begin: 0, end: -8).animate(
+      CurvedAnimation(parent: floatController, curve: Curves.easeInOut),
     );
 
     overlayOpacity = Tween<double>(
       begin: 0,
       end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: modalController,
-        curve: Curves.easeOut,
-      ),
+    ).animate(CurvedAnimation(parent: modalController, curve: Curves.easeOut));
+
+    modalScale = Tween<double>(begin: 0.92, end: 1).animate(
+      CurvedAnimation(parent: modalController, curve: Curves.easeOutBack),
     );
 
-    modalScale = Tween<double>(
-      begin: 0.92,
-      end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: modalController,
-        curve: Curves.easeOutBack,
-      ),
-    );
-
-    modalTranslateY = Tween<double>(
-      begin: 45,
-      end: 0,
-    ).animate(
-      CurvedAnimation(
-        parent: modalController,
-        curve: Curves.easeOutBack,
-      ),
+    modalTranslateY = Tween<double>(begin: 45, end: 0).animate(
+      CurvedAnimation(parent: modalController, curve: Curves.easeOutBack),
     );
 
     introController.forward();
@@ -168,7 +121,13 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
           ? Map<String, dynamic>.from(args['categoria'])
           : null;
 
-      tema = AppThemes.getById(args['temaId']?.toString());
+      final temaDirecto = args['tema'];
+
+      if (temaDirecto is ActivityTheme) {
+        tema = temaDirecto;
+      } else {
+        tema = AppThemes.getById(args['temaId']?.toString());
+      }
     }
 
     cargarActividades();
@@ -271,11 +230,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       return null;
     }
 
-    return inicio.add(
-      Duration(
-        minutes: (duracion * 60).round(),
-      ),
-    );
+    return inicio.add(Duration(minutes: (duracion * 60).round()));
   }
 
   String formatearFechaHora(DateTime? fecha) {
@@ -288,6 +243,19 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     final minute = fecha.minute.toString().padLeft(2, '0');
 
     return '$day/$month/$year $hour:$minute';
+  }
+
+  String? formatearFechaApi(DateTime? fecha) {
+    if (fecha == null) return null;
+
+    final year = fecha.year.toString().padLeft(4, '0');
+    final month = fecha.month.toString().padLeft(2, '0');
+    final day = fecha.day.toString().padLeft(2, '0');
+    final hour = fecha.hour.toString().padLeft(2, '0');
+    final minute = fecha.minute.toString().padLeft(2, '0');
+    final second = fecha.second.toString().padLeft(2, '0');
+
+    return '$year-$month-$day $hour:$minute:$second';
   }
 
   String normalizarEstatus(dynamic value) {
@@ -341,6 +309,40 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     return 'en_proceso';
   }
 
+  int ordenEstado(String estado) {
+    if (estado == 'en_proceso') return 1;
+    if (estado == 'abre_pronto') return 2;
+    if (estado == 'vencida') return 3;
+    if (estado == 'no_cumplida') return 4;
+    if (estado == 'terminada') return 5;
+
+    return 6;
+  }
+
+  DateTime? fechaParaOrdenar(Map<String, dynamic> actividad, String estado) {
+    if (estado == 'en_proceso') {
+      return obtenerFechaCierre(actividad);
+    }
+
+    if (estado == 'abre_pronto') {
+      return obtenerFechaInicio(actividad);
+    }
+
+    if (estado == 'vencida') {
+      return obtenerFechaCierre(actividad);
+    }
+
+    if (estado == 'no_cumplida') {
+      return obtenerFechaCierre(actividad) ?? obtenerFechaInicio(actividad);
+    }
+
+    if (estado == 'terminada') {
+      return obtenerFechaCierre(actividad) ?? obtenerFechaInicio(actividad);
+    }
+
+    return obtenerFechaInicio(actividad);
+  }
+
   String etiquetaEstado(String estado) {
     if (estado == 'terminada') return 'Terminada';
     if (estado == 'en_proceso') return 'En proceso';
@@ -352,11 +354,11 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
   }
 
   Color colorEstado(String estado) {
-    if (estado == 'terminada') return const Color(0xFF16A34A);
-    if (estado == 'en_proceso') return const Color(0xFF0EA5E9);
-    if (estado == 'abre_pronto') return const Color(0xFF6366F1);
-    if (estado == 'vencida') return const Color(0xFFEF4444);
-    if (estado == 'no_cumplida') return const Color(0xFF991B1B);
+    if (estado == 'terminada') return tema.exito;
+    if (estado == 'en_proceso') return tema.primario;
+    if (estado == 'abre_pronto') return tema.secundario;
+    if (estado == 'vencida') return tema.peligro;
+    if (estado == 'no_cumplida') return tema.peligro;
 
     return tema.primario;
   }
@@ -410,23 +412,49 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     final lista = actividades.where((actividad) {
       final estado = obtenerEstadoActividad(actividad);
 
-      final coincideFiltro =
-          filtroEstado == 'todas' ? true : estado == filtroEstado;
+      final coincideFiltro = filtroEstado == 'todas'
+          ? true
+          : estado == filtroEstado;
 
       return coincideFiltro && coincideBusqueda(actividad);
     }).toList();
 
     lista.sort((a, b) {
-      final fechaA = obtenerFechaInicio(a);
-      final fechaB = obtenerFechaInicio(b);
+      final estadoA = obtenerEstadoActividad(a);
+      final estadoB = obtenerEstadoActividad(b);
 
-      final tiempoA = fechaA?.millisecondsSinceEpoch ?? 0;
-      final tiempoB = fechaB?.millisecondsSinceEpoch ?? 0;
+      if (filtroEstado == 'todas') {
+        final ordenA = ordenEstado(estadoA);
+        final ordenB = ordenEstado(estadoB);
 
-      return tiempoA.compareTo(tiempoB);
+        if (ordenA != ordenB) {
+          return ordenA.compareTo(ordenB);
+        }
+      }
+
+      final fechaA = fechaParaOrdenar(a, estadoA);
+      final fechaB = fechaParaOrdenar(b, estadoB);
+
+      final tiempoA = fechaA?.millisecondsSinceEpoch ?? 9999999999999;
+      final tiempoB = fechaB?.millisecondsSinceEpoch ?? 9999999999999;
+
+      final comparacionFecha = tiempoA.compareTo(tiempoB);
+
+      if (comparacionFecha != 0) {
+        return comparacionFecha;
+      }
+
+      final nombreA = a['nombre']?.toString().toLowerCase() ?? '';
+      final nombreB = b['nombre']?.toString().toLowerCase() ?? '';
+
+      return nombreA.compareTo(nombreB);
     });
 
     return lista;
+  }
+
+  Color mezclarConTema(Color color, double opacity, {Color? base}) {
+    return Color.alphaBlend(color.withOpacity(opacity), base ?? tema.tarjeta);
   }
 
   Future<void> cargarActividades() async {
@@ -463,10 +491,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
 
       mostrarMensaje(
         titulo: 'Error',
-        mensaje: limpiarError(
-          error,
-          'No se pudieron cargar las actividades.',
-        ),
+        mensaje: limpiarError(error, 'No se pudieron cargar las actividades.'),
       );
     } finally {
       if (!mounted) return;
@@ -513,6 +538,9 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
           : '${actividad['duracion_horas']}';
 
       estatus = actividad['estatus']?.toString() ?? 'pendiente';
+
+      fechaCierreEditando = obtenerFechaCierre(actividad);
+      fechaCierreManualEditada = false;
     });
 
     modalController.forward(from: 0);
@@ -528,90 +556,183 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     setState(() {
       mostrarEditor = false;
       actividadEditando = null;
+      fechaCierreEditando = null;
+      fechaCierreManualEditada = false;
     });
   }
 
-  Future<void> guardarEdicion() async {
-    if (actividadEditando?['id'] == null) {
-      mostrarMensaje(
-        titulo: 'Error',
-        mensaje: 'No se encontró el id de la actividad.',
+  Future<void> seleccionarFechaCierre() async {
+    final base =
+        fechaCierreEditando ??
+        (actividadEditando == null
+            ? null
+            : obtenerFechaCierre(actividadEditando!)) ??
+        DateTime.now();
+
+    final fecha = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      barrierDismissible: false,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: tema.primario,
+              onPrimary: Colors.white,
+              surface: tema.tarjeta,
+              onSurface: tema.texto,
+            ),
+            dialogBackgroundColor: tema.tarjeta,
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (fecha == null) return;
+
+    if (!mounted) return;
+
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(base),
+      barrierDismissible: false,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: tema.primario,
+              onPrimary: Colors.white,
+              surface: tema.tarjeta,
+              onSurface: tema.texto,
+            ),
+            dialogBackgroundColor: tema.tarjeta,
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (hora == null) return;
+
+    setState(() {
+      fechaCierreEditando = DateTime(
+        fecha.year,
+        fecha.month,
+        fecha.day,
+        hora.hour,
+        hora.minute,
       );
-      return;
-    }
 
-    if (nombre.trim().isEmpty) {
-      mostrarMensaje(
-        titulo: 'Falta nombre',
-        mensaje: 'Escribe el nombre de la actividad.',
-      );
-      return;
-    }
-
-    final horas = double.tryParse(duracionHoras.trim());
-
-    if (duracionHoras.trim().isNotEmpty && horas == null) {
-      mostrarMensaje(
-        titulo: 'Duración inválida',
-        mensaje: 'La duración debe ser un número válido.',
-      );
-      return;
-    }
-
-    final duracionFinal =
-        duracionHoras.trim().isNotEmpty && horas != null ? horas : null;
-
-    final actividadActualizada = {
-      'nombre': nombre.trim(),
-      'descripcion': descripcion.trim().isEmpty ? null : descripcion.trim(),
-      'tipo': tipo,
-      'prioridad': prioridad,
-      'valor_exp': valorExpCalculado,
-      'duracion_horas': duracionFinal,
-      'repetecion': actividadEditando?['repetecion'],
-      'estatus': estatus,
-      'auxiliar': actividadEditando?['auxiliar'],
-    };
-
-    try {
-      setState(() {
-        guardando = true;
-      });
-
-      await ApiService.put(
-        '/actividades/${actividadEditando!['id']}',
-        actividadActualizada,
-      );
-
-      if (!mounted) return;
-
-      mostrarMensaje(
-        titulo: 'Actividad actualizada',
-        mensaje: 'La actividad se editó correctamente.',
-      );
-
-      setState(() {
-        guardando = false;
-      });
-
-      await cerrarEditor();
-      await cargarActividades();
-    } catch (error) {
-      if (!mounted) return;
-
-      setState(() {
-        guardando = false;
-      });
-
-      mostrarMensaje(
-        titulo: 'Error',
-        mensaje: limpiarError(
-          error,
-          'No se pudo editar la actividad.',
-        ),
-      );
-    }
+      fechaCierreManualEditada = true;
+    });
   }
+
+Future<void> guardarEdicion() async {
+  if (actividadEditando?['id'] == null) {
+    mostrarMensaje(
+      titulo: 'Error',
+      mensaje: 'No se encontró el id de la actividad.',
+    );
+    return;
+  }
+
+  if (nombre.trim().isEmpty) {
+    mostrarMensaje(
+      titulo: 'Falta nombre',
+      mensaje: 'Escribe el nombre de la actividad.',
+    );
+    return;
+  }
+
+  final horas = double.tryParse(duracionHoras.trim());
+
+  if (duracionHoras.trim().isNotEmpty && horas == null) {
+    mostrarMensaje(
+      titulo: 'Duración inválida',
+      mensaje: 'La duración debe ser un número válido.',
+    );
+    return;
+  }
+
+  final inicio = obtenerFechaInicio(actividadEditando!);
+
+  if (inicio != null &&
+      fechaCierreEditando != null &&
+      fechaCierreEditando!.isBefore(inicio)) {
+    mostrarMensaje(
+      titulo: 'Fecha inválida',
+      mensaje: 'La fecha de cierre no puede quedar antes de la fecha de inicio.',
+    );
+    return;
+  }
+
+  final duracionFinal =
+      duracionHoras.trim().isNotEmpty && horas != null ? horas : null;
+
+  final actividadActualizada = {
+    'nombre': nombre.trim(),
+    'descripcion': descripcion.trim().isEmpty ? null : descripcion.trim(),
+    'tipo': tipo,
+    'prioridad': prioridad,
+    'valor_exp': valorExpCalculado,
+    'duracion_horas': duracionFinal,
+    'repetecion': actividadEditando?['repetecion'],
+    'estatus': estatus,
+    'auxiliar': actividadEditando?['auxiliar'],
+  };
+
+  try {
+    setState(() {
+      guardando = true;
+    });
+
+    await ApiService.put(
+      '/actividades/${actividadEditando!['id']}',
+      actividadActualizada,
+    );
+
+    if (fechaCierreManualEditada && fechaCierreEditando != null) {
+      await ApiService.put(
+        '/actividades/${actividadEditando!['id']}/cierre',
+        {
+          'fecha_fin': formatearFechaApi(fechaCierreEditando),
+        },
+      );
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      guardando = false;
+    });
+
+    mostrarMensaje(
+      titulo: 'Actividad actualizada',
+      mensaje: 'La actividad se editó correctamente.',
+    );
+
+    await cerrarEditor();
+    await cargarActividades();
+  } catch (error) {
+    if (!mounted) return;
+
+    setState(() {
+      guardando = false;
+    });
+
+    mostrarMensaje(
+      titulo: 'Error',
+      mensaje: limpiarError(
+        error,
+        'No se pudo editar la actividad.',
+      ),
+    );
+  }
+}
+
 
   Future<void> eliminarActividad(Map<String, dynamic> actividad) async {
     final confirmar = await showDialog<bool>(
@@ -619,24 +740,36 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Eliminar actividad'),
+          backgroundColor: tema.tarjeta,
+          title: Text(
+            'Eliminar actividad',
+            style: TextStyle(color: tema.texto, fontWeight: FontWeight.w900),
+          ),
           content: Text(
             '¿Seguro que quieres eliminar "${actividad['nombre'] ?? 'esta actividad'}"?',
+            style: TextStyle(
+              color: tema.textoSuave,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(context, false);
               },
-              child: const Text('Cancelar'),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(
+                  color: tema.textoSuave,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
             FilledButton(
               onPressed: () {
                 Navigator.pop(context, true);
               },
-              style: FilledButton.styleFrom(
-                backgroundColor: tema.peligro,
-              ),
+              style: FilledButton.styleFrom(backgroundColor: tema.peligro),
               child: const Text('Eliminar'),
             ),
           ],
@@ -662,17 +795,15 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
 
       mostrarMensaje(
         titulo: 'Error',
-        mensaje: limpiarError(
-          error,
-          'No se pudo eliminar la actividad.',
-        ),
+        mensaje: limpiarError(error, 'No se pudo eliminar la actividad.'),
       );
     }
   }
 
   Future<void> cambiarEstatusRapido(Map<String, dynamic> actividad) async {
-    final nuevoEstatus =
-        esTerminada(actividad['estatus']) ? 'pendiente' : 'completada';
+    final nuevoEstatus = esTerminada(actividad['estatus'])
+        ? 'pendiente'
+        : 'completada';
 
     final actividadActualizada = {
       'nombre': actividad['nombre'],
@@ -681,6 +812,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       'prioridad': actividad['prioridad'] ?? 'media',
       'valor_exp': actividad['valor_exp'],
       'duracion_horas': actividad['duracion_horas'],
+      'fecha_fin': formatearFechaApi(obtenerFechaCierre(actividad)),
       'repetecion': actividad['repetecion'],
       'estatus': nuevoEstatus,
       'auxiliar': actividad['auxiliar'],
@@ -698,10 +830,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
 
       mostrarMensaje(
         titulo: 'Error',
-        mensaje: limpiarError(
-          error,
-          'No se pudo cambiar el estatus.',
-        ),
+        mensaje: limpiarError(error, 'No se pudo cambiar el estatus.'),
       );
     }
   }
@@ -709,8 +838,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
   void abrirDescripcion(Map<String, dynamic> actividad) {
     final descripcionTexto =
         actividad['descripcion']?.toString().trim().isNotEmpty == true
-            ? actividad['descripcion'].toString()
-            : 'Esta actividad no tiene descripción registrada.';
+        ? actividad['descripcion'].toString()
+        : 'Esta actividad no tiene descripción registrada.';
 
     final inicio = formatearFechaHora(obtenerFechaInicio(actividad));
     final cierre = formatearFechaHora(obtenerFechaCierre(actividad));
@@ -731,12 +860,9 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             constraints: const BoxConstraints(maxWidth: 430),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: tema.tarjeta,
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: const Color(0xFFE2E8F0),
-                width: 2,
-              ),
+              border: Border.all(color: tema.borde, width: 2),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.22),
@@ -769,8 +895,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                         actividad['nombre']?.toString() ?? 'Actividad',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF1E293B),
+                        style: TextStyle(
+                          color: tema.texto,
                           fontSize: 19,
                           fontWeight: FontWeight.w900,
                         ),
@@ -783,15 +909,15 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                       child: Container(
                         width: 38,
                         height: 38,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFF1F5F9),
+                        decoration: BoxDecoration(
+                          color: mezclarConTema(
+                            tema.primario,
+                            0.10,
+                            base: tema.tarjeta,
+                          ),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.close,
-                          color: Color(0xFF475569),
-                          size: 22,
-                        ),
+                        child: Icon(Icons.close, color: tema.texto, size: 22),
                       ),
                     ),
                   ],
@@ -801,13 +927,17 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
+                    color: mezclarConTema(
+                      tema.primario,
+                      0.06,
+                      base: tema.tarjeta,
+                    ),
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Text(
                     descripcionTexto,
-                    style: const TextStyle(
-                      color: Color(0xFF334155),
+                    style: TextStyle(
+                      color: tema.texto,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       height: 1.45,
@@ -835,9 +965,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                   icon: const Icon(Icons.check),
                   label: const Text(
                     'Cerrar',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w900),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: color,
@@ -867,17 +995,11 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: color.withOpacity(0.18),
-        ),
+        border: Border.all(color: color.withOpacity(0.18)),
       ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: color,
-            size: 18,
-          ),
+          Icon(icon, color: color, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -894,8 +1016,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
-                    color: Color(0xFF1E293B),
+                  style: TextStyle(
+                    color: tema.texto,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                   ),
@@ -913,7 +1035,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     if (valor == 'media') return tema.aviso;
     if (valor == 'alta') return tema.peligro;
 
-    return const Color(0xFF64748B);
+    return tema.textoSuave;
   }
 
   Color obtenerColorCategoria() {
@@ -946,23 +1068,36 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     return mensaje;
   }
 
-  void mostrarMensaje({
-    required String titulo,
-    required String mensaje,
-  }) {
+  void mostrarMensaje({required String titulo, required String mensaje}) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
-          title: Text(titulo),
-          content: Text(mensaje),
+          backgroundColor: tema.tarjeta,
+          title: Text(
+            titulo,
+            style: TextStyle(color: tema.texto, fontWeight: FontWeight.w900),
+          ),
+          content: Text(
+            mensaje,
+            style: TextStyle(
+              color: tema.textoSuave,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
               },
-              child: const Text('Aceptar'),
+              child: Text(
+                'Aceptar',
+                style: TextStyle(
+                  color: tema.primario,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
           ],
         );
@@ -1065,15 +1200,9 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withOpacity(0.2),
-              ),
+              border: Border.all(color: tema.borde.withOpacity(0.35)),
             ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 24,
-            ),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
         );
       },
@@ -1089,9 +1218,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
           buildInfoCard(),
           buildSearchBox(),
           buildFiltrosEstado(),
-          Expanded(
-            child: buildActividadesArea(),
-          ),
+          Expanded(child: buildActividadesArea()),
         ],
       ),
     );
@@ -1112,10 +1239,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
               decoration: BoxDecoration(
                 color: tema.primario,
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: tema.borde,
-                  width: 2,
-                ),
+                border: Border.all(color: tema.borde, width: 2),
               ),
               child: const Icon(
                 Icons.chevron_left,
@@ -1133,8 +1257,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                   tipo.isEmpty ? 'Actividades' : tipo,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: tema.texto,
                     fontSize: 28,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1143,7 +1267,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                 Text(
                   'Busca, filtra y administra actividades',
                   style: TextStyle(
-                    color: tema.borde,
+                    color: tema.textoSuave,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1156,15 +1280,12 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             child: Container(
               width: 42,
               height: 42,
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: tema.tarjeta,
                 shape: BoxShape.circle,
+                border: Border.all(color: tema.borde, width: 1.5),
               ),
-              child: Icon(
-                Icons.refresh,
-                color: tema.primario,
-                size: 23,
-              ),
+              child: Icon(Icons.refresh, color: tema.primario, size: 23),
             ),
           ),
         ],
@@ -1179,6 +1300,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       decoration: BoxDecoration(
         color: tema.tarjeta,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: tema.borde.withOpacity(0.75), width: 1.2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
@@ -1195,16 +1317,9 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             decoration: BoxDecoration(
               color: obtenerColorCategoria(),
               borderRadius: BorderRadius.circular(17),
-              border: Border.all(
-                color: tema.borde,
-                width: 3,
-              ),
+              border: Border.all(color: tema.borde, width: 3),
             ),
-            child: Icon(
-              obtenerIconoCategoria(),
-              color: Colors.white,
-              size: 25,
-            ),
+            child: Icon(obtenerIconoCategoria(), color: Colors.white, size: 25),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1221,7 +1336,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Ahora puedes filtrar por estado, buscar y revisar descripción.',
+                  'Ordenado por proceso, cierre próximo, apertura y estado.',
                   style: TextStyle(
                     color: tema.textoSuave,
                     fontSize: 12,
@@ -1243,8 +1358,9 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: tema.tarjeta,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tema.borde.withOpacity(0.75), width: 1.2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.07),
@@ -1255,11 +1371,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.search,
-            color: tema.primario,
-            size: 22,
-          ),
+          Icon(Icons.search, color: tema.primario, size: 22),
           const SizedBox(width: 10),
           Expanded(
             child: TextField(
@@ -1269,16 +1381,16 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                   busquedaActividades = value;
                 });
               },
-              style: const TextStyle(
-                color: Color(0xFF1E293B),
+              style: TextStyle(
+                color: tema.texto,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
                 hintText: 'Buscar actividad...',
                 hintStyle: TextStyle(
-                  color: Color(0xFF94A3B8),
+                  color: tema.textoSuave,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1295,15 +1407,15 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
               child: Container(
                 width: 28,
                 height: 28,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF1F5F9),
+                decoration: BoxDecoration(
+                  color: mezclarConTema(
+                    tema.primario,
+                    0.10,
+                    base: tema.tarjeta,
+                  ),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.close,
-                  color: Color(0xFF64748B),
-                  size: 18,
-                ),
+                child: Icon(Icons.close, color: tema.textoSuave, size: 18),
               ),
             ),
         ],
@@ -1313,16 +1425,6 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
 
   Widget buildFiltrosEstado() {
     final filtros = [
-      {
-        'id': 'todas',
-        'label': 'Todas',
-        'icon': Icons.list_alt_outlined,
-      },
-      {
-        'id': 'terminada',
-        'label': 'Terminada',
-        'icon': Icons.check_circle_outline,
-      },
       {
         'id': 'en_proceso',
         'label': 'En proceso',
@@ -1335,14 +1437,20 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       },
       {
         'id': 'vencida',
-        'label': 'Vencida',
+        'label': 'Vencidas',
         'icon': Icons.warning_amber_outlined,
       },
       {
         'id': 'no_cumplida',
-        'label': 'No cumplida',
+        'label': 'No cumplidas',
         'icon': Icons.cancel_outlined,
       },
+      {
+        'id': 'terminada',
+        'label': 'Terminadas',
+        'icon': Icons.check_circle_outline,
+      },
+      {'id': 'todas', 'label': 'Todas', 'icon': Icons.list_alt_outlined},
     ];
 
     return SizedBox(
@@ -1370,25 +1478,23 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: activo ? Colors.white : Colors.white.withOpacity(0.14),
+                color: activo
+                    ? tema.tarjeta
+                    : mezclarConTema(tema.primario, 0.08, base: tema.fondo),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                  color: activo ? Colors.white : Colors.white.withOpacity(0.22),
+                  color: activo ? tema.borde : tema.borde.withOpacity(0.45),
                   width: 1.2,
                 ),
               ),
               child: Row(
                 children: [
-                  Icon(
-                    icon,
-                    size: 17,
-                    color: activo ? color : Colors.white,
-                  ),
+                  Icon(icon, size: 17, color: activo ? color : tema.textoSuave),
                   const SizedBox(width: 5),
                   Text(
                     filtro['label'].toString(),
                     style: TextStyle(
-                      color: activo ? const Color(0xFF1E293B) : Colors.white,
+                      color: activo ? tema.texto : tema.textoSuave,
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1402,13 +1508,13 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                     decoration: BoxDecoration(
                       color: activo
                           ? color.withOpacity(0.12)
-                          : Colors.white.withOpacity(0.16),
+                          : tema.tarjeta.withOpacity(0.35),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
                       count.toString(),
                       style: TextStyle(
-                        color: activo ? color : Colors.white,
+                        color: activo ? color : tema.textoSuave,
                         fontSize: 11,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1425,18 +1531,16 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
 
   Widget buildActividadesArea() {
     if (cargando) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(
-              color: Colors.white,
-            ),
-            SizedBox(height: 10),
+            CircularProgressIndicator(color: tema.primario),
+            const SizedBox(height: 10),
             Text(
               'Cargando actividades...',
               style: TextStyle(
-                color: Colors.white,
+                color: tema.texto,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
               ),
@@ -1453,34 +1557,28 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
+              color: tema.tarjeta.withOpacity(0.88),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.22),
-              ),
+              border: Border.all(color: tema.borde.withOpacity(0.75)),
             ),
             child: Column(
-              children: const [
-                Icon(
-                  Icons.assignment_outlined,
-                  size: 44,
-                  color: Colors.white,
-                ),
-                SizedBox(height: 12),
+              children: [
+                Icon(Icons.assignment_outlined, size: 44, color: tema.primario),
+                const SizedBox(height: 12),
                 Text(
                   'Sin actividades',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: tema.texto,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
                   'Todavía no hay actividades guardadas en esta clasificación.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFFC7D2FE),
+                    color: tema.textoSuave,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     height: 1.45,
@@ -1502,24 +1600,18 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
           Container(
             padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
+              color: tema.tarjeta.withOpacity(0.88),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.22),
-              ),
+              border: Border.all(color: tema.borde.withOpacity(0.75)),
             ),
             child: Column(
               children: [
-                const Icon(
-                  Icons.search_off,
-                  size: 42,
-                  color: Colors.white,
-                ),
+                Icon(Icons.search_off, size: 42, color: tema.primario),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Sin resultados',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: tema.texto,
                     fontSize: 21,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1528,8 +1620,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                 Text(
                   'No encontré actividades con los filtros actuales.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFFC7D2FE),
+                  style: TextStyle(
+                    color: tema.textoSuave,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     height: 1.45,
@@ -1597,18 +1689,12 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
   Widget buildEditorCard(Size size) {
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(
-        maxWidth: 520,
-        maxHeight: size.height * 0.88,
-      ),
+      constraints: BoxConstraints(maxWidth: 520, maxHeight: size.height * 0.88),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: tema.tarjeta,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: tema.borde,
-          width: 2,
-        ),
+        border: Border.all(color: tema.borde, width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.25),
@@ -1620,11 +1706,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       child: Column(
         children: [
           buildEditorHeader(),
-          Flexible(
-            child: SingleChildScrollView(
-              child: buildEditorBody(),
-            ),
-          ),
+          Flexible(child: SingleChildScrollView(child: buildEditorBody())),
         ],
       ),
     );
@@ -1641,10 +1723,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             decoration: BoxDecoration(
               color: tema.primario,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: const Color(0xFFF8FAFC),
-                width: 3,
-              ),
+              border: Border.all(color: tema.borde, width: 3),
             ),
             child: const Icon(
               Icons.edit_outlined,
@@ -1686,11 +1765,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                 color: tema.peligro,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.close,
-                color: Colors.white,
-                size: 22,
-              ),
+              child: const Icon(Icons.close, color: Colors.white, size: 22),
             ),
           ),
         ],
@@ -1739,6 +1814,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             });
           },
         ),
+        buildLabel('Fecha de cierre'),
+        buildFechaCierreEditor(),
         buildLabel('Estatus'),
         buildStatusRow(),
         buildLabel('Experiencia recalculada'),
@@ -1754,8 +1831,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       padding: const EdgeInsets.only(top: 12, bottom: 7),
       child: Text(
         text,
-        style: const TextStyle(
-          color: Color(0xFF334155),
+        style: TextStyle(
+          color: tema.texto,
           fontSize: 13,
           fontWeight: FontWeight.w900,
         ),
@@ -1772,29 +1849,21 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     TextInputType? keyboardType,
   }) {
     return Container(
-      constraints: BoxConstraints(
-        minHeight: multiline ? 88 : 54,
-      ),
+      constraints: BoxConstraints(minHeight: multiline ? 88 : 54),
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: mezclarConTema(tema.primario, 0.05, base: tema.tarjeta),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: const Color(0xFFDBEAFE),
-          width: 1.5,
-        ),
+        border: Border.all(color: tema.borde, width: 1.5),
       ),
       child: Row(
-        crossAxisAlignment:
-            multiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment: multiline
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: [
           Padding(
             padding: EdgeInsets.only(top: multiline ? 14 : 0),
-            child: Icon(
-              icon,
-              color: tema.primario,
-              size: 20,
-            ),
+            child: Icon(icon, color: tema.primario, size: 20),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -1805,16 +1874,84 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
               keyboardType: keyboardType,
               minLines: multiline ? 3 : 1,
               maxLines: multiline ? 5 : 1,
-              style: const TextStyle(
-                color: Color(0xFF1E293B),
+              style: TextStyle(
+                color: tema.texto,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 hintText: hint,
-                hintStyle: const TextStyle(
-                  color: Color(0xFF94A3B8),
+                hintStyle: TextStyle(color: tema.textoSuave),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildFechaCierreEditor() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: mezclarConTema(tema.peligro, 0.05, base: tema.tarjeta),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tema.borde, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: tema.peligro.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.flag_outlined, color: tema.peligro, size: 21),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  formatearFechaHora(fechaCierreEditando),
+                  style: TextStyle(
+                    color: tema.texto,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Solo cambia el cierre, no modifica la duración.',
+                  style: TextStyle(
+                    color: tema.textoSuave,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: guardando ? null : seleccionarFechaCierre,
+            child: Container(
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: tema.primario,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                'Cambiar',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
@@ -1828,7 +1965,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     return Row(
       children: prioridadesActivitis.map((item) {
         final activo = prioridad == item['nombre'];
-        final color = item['color'] as Color;
+        final color = obtenerColorPrioridad(item['nombre']);
 
         return Expanded(
           child: Container(
@@ -1844,10 +1981,10 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 11),
                 decoration: BoxDecoration(
-                  color: activo ? color : Colors.white,
+                  color: activo ? color : tema.tarjeta,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
-                    color: activo ? color : const Color(0xFFE2E8F0),
+                    color: activo ? color : tema.borde,
                     width: 1.5,
                   ),
                 ),
@@ -1855,7 +1992,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
                 child: Text(
                   item['etiqueta'].toString(),
                   style: TextStyle(
-                    color: activo ? Colors.white : const Color(0xFF64748B),
+                    color: activo ? Colors.white : tema.textoSuave,
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1876,17 +2013,17 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
         buildStatusOption(
           value: 'pendiente',
           label: 'Pendiente',
-          color: const Color(0xFFF59E0B),
+          color: tema.aviso,
         ),
         buildStatusOption(
           value: 'completada',
           label: 'Completada',
-          color: const Color(0xFF16A34A),
+          color: tema.exito,
         ),
         buildStatusOption(
           value: 'no_cumplida',
           label: 'No cumplida',
-          color: const Color(0xFFEF4444),
+          color: tema.peligro,
         ),
       ],
     );
@@ -1908,22 +2045,16 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
               });
             },
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 11,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          color: activo ? color.withOpacity(0.16) : Colors.white,
+          color: activo ? color.withOpacity(0.16) : tema.tarjeta,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: activo ? color : const Color(0xFFE2E8F0),
-            width: 1.5,
-          ),
+          border: Border.all(color: activo ? color : tema.borde, width: 1.5),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color: activo ? color : const Color(0xFF64748B),
+            color: activo ? color : tema.textoSuave,
             fontSize: 13,
             fontWeight: FontWeight.w900,
           ),
@@ -1938,6 +2069,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
       decoration: BoxDecoration(
         color: tema.fondoSecundario,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tema.borde.withOpacity(0.4)),
       ),
       child: Row(
         children: [
@@ -1947,16 +2079,9 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             decoration: BoxDecoration(
               color: tema.barraXp,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: Colors.white,
-                width: 3,
-              ),
+              border: Border.all(color: tema.borde, width: 3),
             ),
-            child: const Icon(
-              Icons.flash_on,
-              color: Colors.white,
-              size: 24,
-            ),
+            child: const Icon(Icons.flash_on, color: Colors.white, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1965,17 +2090,17 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
               children: [
                 Text(
                   '$valorExpCalculado XP',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: tema.texto,
                     fontSize: 24,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 2),
-                const Text(
+                Text(
                   'Se recalcula por prioridad y duración',
                   style: TextStyle(
-                    color: Color(0xFFC7D2FE),
+                    color: tema.textoSuave,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2005,13 +2130,11 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
             : const Icon(Icons.save_outlined),
         label: Text(
           guardando ? 'Guardando...' : 'Guardar cambios',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         style: FilledButton.styleFrom(
           backgroundColor: tema.primario,
-          disabledBackgroundColor: const Color(0xFF94A3B8),
+          disabledBackgroundColor: tema.textoSuave,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
@@ -2089,21 +2212,10 @@ class _ActivityCardState extends State<ActivityCard>
     fadeAnimation = Tween<double>(
       begin: 0,
       end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: introController,
-        curve: Curves.easeOut,
-      ),
-    );
+    ).animate(CurvedAnimation(parent: introController, curve: Curves.easeOut));
 
-    slideAnimation = Tween<double>(
-      begin: 35,
-      end: 0,
-    ).animate(
-      CurvedAnimation(
-        parent: introController,
-        curve: Curves.easeOutBack,
-      ),
+    slideAnimation = Tween<double>(begin: 35, end: 0).animate(
+      CurvedAnimation(parent: introController, curve: Curves.easeOutBack),
     );
 
     scaleAnimation = pressController;
@@ -2129,48 +2241,44 @@ class _ActivityCardState extends State<ActivityCard>
     pressController.forward();
   }
 
+  Color mezclarConTarjeta(Color color, double opacity) {
+    return Color.alphaBlend(color.withOpacity(opacity), widget.tema.tarjeta);
+  }
+
   @override
   Widget build(BuildContext context) {
     final actividad = widget.actividad;
     final tema = widget.tema;
 
-    final prioridadColor =
-        widget.obtenerColorPrioridad(actividad['prioridad']);
+    final prioridadColor = widget.obtenerColorPrioridad(actividad['prioridad']);
 
     final bool completada = widget.estado == 'terminada';
 
-    Color background = Colors.white;
-    Color border = const Color(0xFFE2E8F0);
+    Color background = tema.tarjeta;
+    Color border = tema.borde;
 
     if (widget.estado == 'terminada') {
-      background = const Color(0xFFF0FDF4);
-      border = const Color(0xFFBBF7D0);
-    } else if (widget.estado == 'vencida' ||
-        widget.estado == 'no_cumplida') {
-      background = const Color(0xFFFFF1F2);
-      border = const Color(0xFFFECACA);
+      background = mezclarConTarjeta(tema.exito, 0.08);
+      border = tema.exito.withOpacity(0.30);
+    } else if (widget.estado == 'vencida' || widget.estado == 'no_cumplida') {
+      background = mezclarConTarjeta(tema.peligro, 0.08);
+      border = tema.peligro.withOpacity(0.30);
     } else if (widget.estado == 'abre_pronto') {
-      background = const Color(0xFFEFF6FF);
-      border = const Color(0xFFBFDBFE);
+      background = mezclarConTarjeta(tema.secundario, 0.08);
+      border = tema.secundario.withOpacity(0.30);
     } else if (widget.estado == 'en_proceso') {
-      background = const Color(0xFFECFDF5);
-      border = const Color(0xFFBBF7D0);
+      background = mezclarConTarjeta(tema.primario, 0.08);
+      border = tema.primario.withOpacity(0.30);
     }
 
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        introController,
-        pressController,
-      ]),
+      animation: Listenable.merge([introController, pressController]),
       builder: (context, child) {
         return Opacity(
           opacity: fadeAnimation.value,
           child: Transform.translate(
             offset: Offset(0, slideAnimation.value),
-            child: Transform.scale(
-              scale: scaleAnimation.value,
-              child: child,
-            ),
+            child: Transform.scale(scale: scaleAnimation.value, child: child),
           ),
         );
       },
@@ -2184,10 +2292,7 @@ class _ActivityCardState extends State<ActivityCard>
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: border,
-              width: 1.4,
-            ),
+            border: Border.all(color: border, width: 1.4),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.07),
@@ -2206,10 +2311,7 @@ class _ActivityCardState extends State<ActivityCard>
                     decoration: BoxDecoration(
                       color: widget.estadoColor,
                       borderRadius: BorderRadius.circular(17),
-                      border: Border.all(
-                        color: const Color(0xFFF8FAFC),
-                        width: 3,
-                      ),
+                      border: Border.all(color: tema.borde, width: 3),
                     ),
                     child: Icon(
                       widget.estadoIcon,
@@ -2226,8 +2328,8 @@ class _ActivityCardState extends State<ActivityCard>
                           actividad['nombre']?.toString() ?? 'Sin nombre',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF0F172A),
+                          style: TextStyle(
+                            color: tema.texto,
                             fontSize: 17,
                             fontWeight: FontWeight.w900,
                           ),
@@ -2240,7 +2342,8 @@ class _ActivityCardState extends State<ActivityCard>
                             buildStatusBadge(),
                             buildMetaBadge(
                               icon: Icons.priority_high,
-                              text: actividad['prioridad']?.toString() ??
+                              text:
+                                  actividad['prioridad']?.toString() ??
                                   'sin prioridad',
                               color: prioridadColor,
                               bg: prioridadColor.withOpacity(0.12),
@@ -2248,8 +2351,8 @@ class _ActivityCardState extends State<ActivityCard>
                             buildMetaBadge(
                               icon: Icons.flash_on,
                               text: '${actividad['valor_exp'] ?? 0} XP',
-                              color: const Color(0xFF92400E),
-                              bg: const Color(0xFFFFFBEB),
+                              color: tema.barraXp,
+                              bg: tema.barraXp.withOpacity(0.12),
                             ),
                           ],
                         ),
@@ -2280,14 +2383,14 @@ class _ActivityCardState extends State<ActivityCard>
                     text: actividad['duracion_horas'] != null
                         ? '${actividad['duracion_horas']} h'
                         : 'sin horas',
-                    color: const Color(0xFF334155),
-                    bg: const Color(0xFFF8FAFC),
+                    color: tema.texto,
+                    bg: tema.tarjeta.withOpacity(0.62),
                   ),
                   buildMetaBadge(
                     icon: Icons.repeat,
                     text: actividad['repetecion']?.toString() ?? 'Una vez',
                     color: tema.primario,
-                    bg: const Color(0xFFEEF2FF),
+                    bg: tema.primario.withOpacity(0.10),
                   ),
                 ],
               ),
@@ -2298,7 +2401,7 @@ class _ActivityCardState extends State<ActivityCard>
                     child: buildActionButton(
                       text: 'Descripción',
                       icon: Icons.description_outlined,
-                      bg: const Color(0xFF334155),
+                      bg: tema.texto,
                       onTap: widget.onDescription,
                     ),
                   ),
@@ -2309,9 +2412,7 @@ class _ActivityCardState extends State<ActivityCard>
                       icon: completada
                           ? Icons.keyboard_return
                           : Icons.check_circle_outline,
-                      bg: completada
-                          ? const Color(0xFFF59E0B)
-                          : const Color(0xFF16A34A),
+                      bg: completada ? tema.aviso : tema.exito,
                       onTap: widget.onToggleStatus,
                     ),
                   ),
@@ -2349,25 +2450,16 @@ class _ActivityCardState extends State<ActivityCard>
 
   Widget buildStatusBadge() {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 9,
-        vertical: 5,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: widget.estadoColor.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: widget.estadoColor.withOpacity(0.35),
-        ),
+        border: Border.all(color: widget.estadoColor.withOpacity(0.35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            widget.estadoIcon,
-            size: 14,
-            color: widget.estadoColor,
-          ),
+          Icon(widget.estadoIcon, size: 14, color: widget.estadoColor),
           const SizedBox(width: 4),
           Text(
             widget.estadoLabel,
@@ -2389,25 +2481,16 @@ class _ActivityCardState extends State<ActivityCard>
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        vertical: 7,
-        horizontal: 10,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 10),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: color.withOpacity(0.16),
-        ),
+        border: Border.all(color: color.withOpacity(0.16)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            color: color,
-            size: 14,
-          ),
+          Icon(icon, color: color, size: 14),
           const SizedBox(width: 5),
           Text(
             '$label $text',
@@ -2429,25 +2512,16 @@ class _ActivityCardState extends State<ActivityCard>
     required Color bg,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        vertical: 7,
-        horizontal: 10,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 10),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-        ),
+        border: Border.all(color: widget.tema.borde.withOpacity(0.75)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            color: color,
-            size: 14,
-          ),
+          Icon(icon, color: color, size: 14),
           const SizedBox(width: 4),
           Text(
             text,
@@ -2486,11 +2560,7 @@ class _ActivityCardState extends State<ActivityCard>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              color: Colors.white,
-              size: 18,
-            ),
+            Icon(icon, color: Colors.white, size: 18),
             if (text.isNotEmpty) ...[
               const SizedBox(width: 5),
               Text(

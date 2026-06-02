@@ -6,6 +6,8 @@ import 'screens/ajustes.dart';
 import 'screens/misiones.dart';
 import 'screens/activitis_dash.dart';
 import 'utils/notificaciones_tareas.dart';
+import 'screens/activitis_dash_day.dart';
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +37,7 @@ class ActivityApp extends StatelessWidget {
         '/ajustes': (context) => const AjustesScreen(),
         '/misiones': (context) => const MisionesScreen(),
         '/activitis-dash': (context) => const ActivitisDashScreen(),
+        '/activitis-dash-day': (context) => const ActivitisDashDayScreen(),
       },
     );
   }
