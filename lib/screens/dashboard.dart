@@ -39,7 +39,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   Map<String, dynamic>? nivelInfo;
 
   List<Map<String, dynamic>> misiones = [];
+  List<Map<String, dynamic>> misionesDiariasHoy = [];
   bool cargandoMisiones = false;
+  bool cargandoMisionesDiarias = false;
+  int? idMisionDiariaAccionando;
   DateTime ahoraTick = DateTime.now();
 
   String filtroMisiones = 'pendientes';
@@ -285,6 +288,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     await cargarNivelUsuario();
+    await cargarMisionesDiariasHoy();
     await cargarMisionesDelDia();
   }
 
@@ -375,6 +379,42 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return false;
+  }
+
+  bool boolDesdeValor(dynamic valor, bool fallback) {
+    if (valor == null) return fallback;
+
+    if (valor is bool) return valor;
+
+    if (valor is int) return valor == 1;
+
+    if (valor is double) return valor.round() == 1;
+
+    final texto = valor.toString().trim().toLowerCase();
+
+    if (texto == '1' ||
+        texto == 'true' ||
+        texto == 'si' ||
+        texto == 'sí' ||
+        texto == 'activo' ||
+        texto == 'activa' ||
+        texto == 'completada' ||
+        texto == 'completado') {
+      return true;
+    }
+
+    if (texto == '0' ||
+        texto == 'false' ||
+        texto == 'no' ||
+        texto == 'inactivo' ||
+        texto == 'inactiva' ||
+        texto == 'pendiente' ||
+        texto == 'pausado' ||
+        texto == 'pausada') {
+      return false;
+    }
+
+    return fallback;
   }
 
   DateTime? convertirFecha(dynamic valor) {
@@ -863,15 +903,21 @@ class _DashboardScreenState extends State<DashboardScreen>
       return false;
     }
 
-    final fechaFin = obtenerFechaReferencia(
+    final fechaReferencia = obtenerFechaReferencia(
       mision,
       [
-        'fechaFin',
+        'fecha_completada',
+        'fecha_completado',
+        'completada_en',
+        'terminada_en',
+        'fecha_actualizacion',
+        'updated_at',
         'fecha_fin',
+        'fecha_inicio',
       ],
     );
 
-    return esMismaFecha(fechaFin, ahoraTick);
+    return fechaDentroDeHoras(fechaReferencia, 48);
   }
 
   String obtenerTipoMision(Map<String, dynamic> mision) {
@@ -1039,7 +1085,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     if (filtroMisiones == 'terminadas') {
-      return 'Solo se muestran las misiones terminadas que finalizan hoy.';
+      return 'Solo se muestran las terminadas durante las últimas 48 horas.';
     }
 
     return 'Las misiones activas, atrasadas o en proceso aparecerán aquí.';
@@ -1186,6 +1232,151 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       setState(() {
         cargandoMisiones = false;
+      });
+    }
+  }
+
+
+  Map<String, dynamic> normalizarMisionDiariaHoy(Map<String, dynamic> item) {
+    return {
+      'id': item['id'],
+      'nombre': item['nombre'] ?? item['name'] ?? 'Misión diaria',
+      'descripcion': item['descripcion'] ?? item['description'],
+      'dias': item['dias'] ?? item['repeat_days'] ?? [],
+      'hora': item['hora'] ?? item['scheduled_time'] ?? '08:00',
+      'prioridad': item['prioridad'] ?? item['priority'] ?? 'media',
+      'valor_exp': toInt(item['valor_exp'] ?? item['exp_value'], 0),
+      'activa': boolDesdeValor(item['activa'] ?? item['is_active'], true),
+      'completada_hoy': boolDesdeValor(
+        item['completada_hoy'] ?? item['completed_today'],
+        false,
+      ),
+      'completed_at': item['completed_at'],
+      'exp_awarded': item['exp_awarded'],
+    };
+  }
+
+  Future<void> cargarMisionesDiariasHoy() async {
+    try {
+      if (!mounted) return;
+
+      setState(() {
+        cargandoMisionesDiarias = true;
+      });
+
+      final response = await ApiService.get('/actividades/diarias/hoy');
+
+      List<dynamic> actividadesRaw = [];
+
+      if (response is Map<String, dynamic>) {
+        actividadesRaw = response['actividades'] is List
+            ? response['actividades'] as List
+            : [];
+      }
+
+      final actividades = actividadesRaw
+          .whereType<Map>()
+          .map((item) => normalizarMisionDiariaHoy(
+                Map<String, dynamic>.from(item),
+              ))
+          .toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        misionesDiariasHoy = actividades;
+      });
+    } catch (error) {
+      debugPrint('Error al cargar misiones diarias de hoy: $error');
+
+      if (!mounted) return;
+
+      setState(() {
+        misionesDiariasHoy = [];
+      });
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        cargandoMisionesDiarias = false;
+      });
+    }
+  }
+
+  Future<void> cargarDashboardCompleto() async {
+    await cargarMisionesDiariasHoy();
+    await cargarMisionesDelDia();
+  }
+
+  Future<void> completarMisionDiariaHoy(
+    Map<String, dynamic> misionSeleccionada,
+  ) async {
+    if (boolDesdeValor(misionSeleccionada['completada_hoy'], false)) {
+      return;
+    }
+
+    final idMision = misionSeleccionada['id'];
+
+    if (idMision == null) {
+      return;
+    }
+
+    try {
+      setState(() {
+        idMisionDiariaAccionando = toInt(idMision, 0);
+      });
+
+      final response = await ApiService.put(
+        '/actividades/diarias/$idMision/completar-hoy',
+      );
+
+      if (response is Map<String, dynamic>) {
+        final usuarioRaw = response['usuario'];
+
+        if (usuarioRaw is Map<String, dynamic>) {
+          final usuarioActualizado = Map<String, dynamic>.from(usuarioRaw);
+
+          if (mounted) {
+            setState(() {
+              usuario = usuarioActualizado;
+              xpTotal = toInt(usuarioActualizado['exp'], xpTotal);
+              nivelActual = toInt(usuarioActualizado['nivel'], nivelActual);
+            });
+          }
+        }
+      }
+
+      await cargarNivelUsuario();
+      await cargarMisionesDiariasHoy();
+
+      if (!mounted) return;
+
+      final valorExp = toInt(
+        response is Map<String, dynamic>
+            ? response['exp_ganada'] ?? misionSeleccionada['valor_exp']
+            : misionSeleccionada['valor_exp'],
+        0,
+      );
+
+      mostrarMensaje(
+        titulo: 'Misión diaria cumplida',
+        mensaje: 'Ganaste $valorExp puntos de experiencia. Mañana podrás cumplirla de nuevo si toca ese día.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      mostrarMensaje(
+        titulo: 'Error',
+        mensaje: limpiarError(
+          error,
+          'No se pudo completar la misión diaria.',
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        idMisionDiariaAccionando = null;
       });
     }
   }
@@ -1659,6 +1850,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(height: 8),
           buildTabsRow(),
           const SizedBox(height: 8),
+          buildDailyMissionsSection(),
+          const SizedBox(height: 8),
           buildMissionFilters(),
           const SizedBox(height: 8),
           buildTipoFilterSelect(),
@@ -1874,7 +2067,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           onTap: cargandoMisiones
               ? null
               : () {
-                  cargarMisionesDelDia();
+                  cargarDashboardCompleto();
                 },
           child: Container(
             width: 72,
@@ -1941,7 +2134,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         GestureDetector(
-          onTap: cargarMisionesDelDia,
+          onTap: cargarDashboardCompleto,
           child: Container(
             width: 40,
             height: 40,
@@ -1958,6 +2151,364 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
       ],
     );
+  }
+
+
+  Widget buildDailyMissionsSection() {
+    final total = misionesDiariasHoy.length;
+    final completadas = misionesDiariasHoy
+        .where((mision) => boolDesdeValor(mision['completada_hoy'], false))
+        .length;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.16),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.24),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: tema.exito,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: tema.exito.withOpacity(0.24),
+                      blurRadius: 10,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.repeat_on_outlined,
+                  color: Colors.white,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Misiones diarias de hoy',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      total == 0
+                          ? 'Las rutinas de hoy aparecerán aquí.'
+                          : '$completadas de $total cumplidas hoy',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFC7D2FE),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: () => navegarAScreen('MisionesDiarias'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.add,
+                        color: tema.primario,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Agregar',
+                        style: TextStyle(
+                          color: tema.primario,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (cargandoMisionesDiarias && misionesDiariasHoy.isEmpty)
+            Container(
+              height: 86,
+              alignment: Alignment.center,
+              child: const CircularProgressIndicator(
+                color: Colors.white,
+              ),
+            )
+          else if (misionesDiariasHoy.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.18),
+                ),
+              ),
+              child: Row(
+                children: const [
+                  Icon(
+                    Icons.nights_stay_outlined,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'No hay misiones diarias programadas para hoy.',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              height: 118,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: misionesDiariasHoy.length,
+                separatorBuilder: (context, index) {
+                  return const SizedBox(width: 10);
+                },
+                itemBuilder: (context, index) {
+                  return buildDailyMissionMiniCard(misionesDiariasHoy[index]);
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildDailyMissionMiniCard(Map<String, dynamic> mision) {
+    final id = toInt(mision['id'], 0);
+    final completada = boolDesdeValor(mision['completada_hoy'], false);
+    final accionando = idMisionDiariaAccionando == id;
+    final xp = toInt(mision['valor_exp'], 0);
+    final hora = mision['hora']?.toString() ?? '08:00';
+    final prioridad = mision['prioridad']?.toString() ?? 'media';
+
+    final Color color = completada ? tema.exito : colorPrioridadDiaria(prioridad);
+
+    return Container(
+      width: 245,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(
+          color: completada
+              ? const Color(0xFFBBF7D0)
+              : const Color(0xFFE2E8F0),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.07),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: accionando
+                    ? const Padding(
+                        padding: EdgeInsets.all(10),
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Icon(
+                        completada
+                            ? Icons.done_all
+                            : Icons.auto_awesome_motion_outlined,
+                        color: Colors.white,
+                        size: 21,
+                      ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      mision['nombre']?.toString() ?? 'Misión diaria',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF1E293B),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      completada ? 'Cumplida hoy' : 'Pendiente hoy',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: completada
+                            ? const Color(0xFF16A34A)
+                            : const Color(0xFF64748B),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              buildDailyMissionBadge(
+                icon: Icons.schedule_outlined,
+                text: hora,
+                color: tema.barraXp,
+              ),
+              buildDailyMissionBadge(
+                icon: Icons.flash_on,
+                text: '$xp XP',
+                color: tema.primario,
+              ),
+            ],
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: completada || accionando
+                ? null
+                : () {
+                    completarMisionDiariaHoy(mision);
+                  },
+            child: Container(
+              height: 32,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: completada ? const Color(0xFF16A34A) : tema.primario,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    completada ? Icons.check_circle_outline : Icons.check,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    completada ? 'Lista' : 'Cumplir',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildDailyMissionBadge({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 13,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color colorPrioridadDiaria(String valor) {
+    if (valor == 'baja') return tema.exito;
+    if (valor == 'media') return tema.aviso;
+    if (valor == 'alta') return tema.peligro;
+
+    return tema.primario;
   }
 
   Widget buildMissionFilters() {
