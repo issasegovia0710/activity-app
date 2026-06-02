@@ -6,6 +6,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../utils/notificaciones_tareas.dart';
 import 'activitis_dash_day.dart';
+import 'ejercicios.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -40,9 +41,12 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   List<Map<String, dynamic>> misiones = [];
   List<Map<String, dynamic>> misionesDiariasHoy = [];
+  List<Map<String, dynamic>> rutinasEjercicioHoy = [];
   bool cargandoMisiones = false;
   bool cargandoMisionesDiarias = false;
+  bool cargandoRutinasEjercicio = false;
   int? idMisionDiariaAccionando;
+  int? idRutinaEjercicioAccionando;
   DateTime ahoraTick = DateTime.now();
 
   String filtroMisiones = 'pendientes';
@@ -288,6 +292,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     await cargarNivelUsuario();
+    await cargarMisionesDiariasHoy();
+    await cargarRutinasEjercicioHoy();
     await cargarMisionesDelDia();
   }
 
@@ -554,6 +560,13 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     if (texto.contains('vida') || texto.contains('diaria')) {
       return Icons.home_outlined;
+    }
+
+    if (texto.contains('ejercicio') ||
+        texto.contains('rutina') ||
+        texto.contains('fitness') ||
+        texto.contains('entreno')) {
+      return Icons.fitness_center_outlined;
     }
 
     if (texto.contains('escuela') || texto.contains('estudio')) {
@@ -1091,11 +1104,86 @@ class _DashboardScreenState extends State<DashboardScreen>
     };
   }
 
+
+  Map<String, dynamic> mapearRutinaEjercicioHoyAMisionDashboard(
+    Map<String, dynamic> rutina,
+  ) {
+    final completada = boolDesdeValor(rutina['completada_hoy'], false);
+    final valorExp = toInt(
+      rutina['valor_exp_total'] ?? rutina['valor_exp'] ?? rutina['exp_value'],
+      0,
+    );
+    final hora = rutina['hora_inicio']?.toString() ??
+        rutina['hora']?.toString() ??
+        '07:00';
+    final duracion = toInt(rutina['duracion_minutos'], 45);
+    final ejercicios = rutina['ejercicios'];
+
+    String resumenEjercicios() {
+      if (ejercicios is List && ejercicios.isNotEmpty) {
+        return ejercicios
+            .map((item) {
+              if (item is Map) {
+                return item['nombre']?.toString() ?? 'Ejercicio';
+              }
+
+              return item.toString();
+            })
+            .take(4)
+            .join(', ');
+      }
+
+      return 'Rutina de $duracion minutos';
+    }
+
+    return {
+      ...rutina,
+      'esEjercicio': true,
+      'titulo': rutina['nombre'] ?? 'Rutina de ejercicio',
+      'categoria': 'Ejercicio',
+      'tipo': 'Ejercicio',
+      'xp': valorExp,
+      'valor_exp': valorExp,
+      'color': const Color(0xFF0EA5E9),
+      'icono': Icons.fitness_center_outlined,
+      'estatus': completada ? 'completada' : 'pendiente',
+      'completada': completada,
+      'noCumplida': false,
+      'fechaInicio': null,
+      'fechaFin': null,
+      'fechaInicioTexto': 'Hoy $hora',
+      'fechaFinTexto': '$duracion min',
+      'fechaLimiteTexto': '',
+      'fechaCorta': 'Hoy',
+      'horaInicio': hora,
+      'horaFinal': null,
+      'vencida': false,
+      'atrasada': false,
+      'enProceso': false,
+      'porAbrir': false,
+      'futura': false,
+      'estadoTiempo': completada ? 'completada' : 'activa',
+      'cuentaRegresiva': '',
+      'penalizacion': 0,
+      'descripcion': rutina['descripcion'] ?? resumenEjercicios(),
+    };
+  }
+
   List<Map<String, dynamic>> get misionesFiltradas {
     if (filtroMisiones == 'vida_diaria') {
-      final diarias = misionesDiariasHoy.map(mapearMisionDiariaHoyAMisionDashboard).toList();
+      final diarias = misionesDiariasHoy
+          .map(mapearMisionDiariaHoyAMisionDashboard)
+          .toList();
 
       return ordenarMisiones(diarias);
+    }
+
+    if (filtroMisiones == 'ejercicio') {
+      final rutinas = rutinasEjercicioHoy
+          .map(mapearRutinaEjercicioHoyAMisionDashboard)
+          .toList();
+
+      return ordenarMisiones(rutinas);
     }
 
     final filtradas = obtenerMisionesPorEstado(filtroMisiones)
@@ -1111,6 +1199,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   int get totalVidaDiaria {
     return misionesDiariasHoy.length;
+  }
+
+  int get totalEjercicio {
+    return rutinasEjercicioHoy.length;
   }
 
   int get totalPendientes {
@@ -1142,6 +1234,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       return 'No tienes misiones de vida diaria para hoy.';
     }
 
+    if (filtroMisiones == 'ejercicio') {
+      return 'No tienes rutinas de ejercicio para hoy.';
+    }
+
     if (filtroMisiones == 'proximas') {
       return 'No tienes misiones próximas.';
     }
@@ -1160,6 +1256,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   String get descripcionVacioFiltro {
     if (filtroMisiones == 'vida_diaria') {
       return 'Cuando toque una rutina diaria, aparecerá aquí para marcarla como cumplida.';
+    }
+
+    if (filtroMisiones == 'ejercicio') {
+      return 'Cuando toque una rutina de ejercicio, aparecerá aquí para cumplirla y ganar XP.';
     }
 
     if (filtroMisiones == 'proximas') {
@@ -1391,12 +1491,18 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> cargarDashboardCompleto() async {
     await cargarMisionesDiariasHoy();
+    await cargarRutinasEjercicioHoy();
     await cargarMisionesDelDia();
   }
 
   Future<void> recargarMisionesActuales() async {
     if (filtroMisiones == 'vida_diaria') {
       await cargarMisionesDiariasHoy();
+      return;
+    }
+
+    if (filtroMisiones == 'ejercicio') {
+      await cargarRutinasEjercicioHoy();
       return;
     }
 
@@ -1410,6 +1516,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     if (id == 'vida_diaria') {
       cargarMisionesDiariasHoy();
+    }
+
+    if (id == 'ejercicio') {
+      cargarRutinasEjercicioHoy();
     }
   }
 
@@ -1486,7 +1596,163 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+
+
+  Map<String, dynamic> normalizarRutinaEjercicioHoy(Map<String, dynamic> item) {
+    return {
+      'id': item['id'],
+      'nombre': item['nombre'] ?? item['name'] ?? 'Rutina de ejercicio',
+      'descripcion': item['descripcion'] ?? item['description'],
+      'dias': item['dias'] ?? [],
+      'hora_inicio': item['hora_inicio'] ?? item['hora'] ?? '07:00',
+      'duracion_minutos': toInt(item['duracion_minutos'], 45),
+      'valor_exp_total': toInt(
+        item['valor_exp_total'] ?? item['valor_exp'] ?? item['exp_value'],
+        0,
+      ),
+      'activa': boolDesdeValor(item['activa'] ?? item['is_active'], true),
+      'completada_hoy': boolDesdeValor(
+        item['completada_hoy'] ?? item['completed_today'],
+        false,
+      ),
+      'completed_at': item['completed_at'],
+      'exp_ganada': item['exp_ganada'],
+      'ejercicios': item['ejercicios'] is List ? item['ejercicios'] : [],
+    };
+  }
+
+  Future<void> cargarRutinasEjercicioHoy() async {
+    try {
+      if (!mounted) return;
+
+      setState(() {
+        cargandoRutinasEjercicio = true;
+      });
+
+      final response = await ApiService.get('/actividades/ejercicios/rutinas/hoy');
+
+      List<dynamic> rutinasRaw = [];
+
+      if (response is Map<String, dynamic>) {
+        rutinasRaw = response['rutinas'] is List
+            ? response['rutinas'] as List
+            : [];
+      }
+
+      final rutinas = rutinasRaw
+          .whereType<Map>()
+          .map((item) => normalizarRutinaEjercicioHoy(
+                Map<String, dynamic>.from(item),
+              ))
+          .toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        rutinasEjercicioHoy = rutinas;
+      });
+    } catch (error) {
+      debugPrint('Error al cargar rutinas de ejercicio de hoy: $error');
+
+      if (!mounted) return;
+
+      setState(() {
+        rutinasEjercicioHoy = [];
+      });
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        cargandoRutinasEjercicio = false;
+      });
+    }
+  }
+
+  Future<void> completarRutinaEjercicioHoy(
+    Map<String, dynamic> rutinaSeleccionada,
+  ) async {
+    if (boolDesdeValor(rutinaSeleccionada['completada_hoy'], false)) {
+      return;
+    }
+
+    final idRutina = rutinaSeleccionada['id'];
+
+    if (idRutina == null) {
+      return;
+    }
+
+    try {
+      setState(() {
+        idRutinaEjercicioAccionando = toInt(idRutina, 0);
+      });
+
+      final response = await ApiService.put(
+        '/actividades/ejercicios/rutinas/$idRutina/completar-hoy',
+        {
+          'duracion_real_minutos': toInt(
+            rutinaSeleccionada['duracion_minutos'],
+            45,
+          ),
+        },
+      );
+
+      if (response is Map<String, dynamic>) {
+        final usuarioRaw = response['usuario'];
+
+        if (usuarioRaw is Map<String, dynamic>) {
+          final usuarioActualizado = Map<String, dynamic>.from(usuarioRaw);
+
+          if (mounted) {
+            setState(() {
+              usuario = usuarioActualizado;
+              xpTotal = toInt(usuarioActualizado['exp'], xpTotal);
+              nivelActual = toInt(usuarioActualizado['nivel'], nivelActual);
+            });
+          }
+        }
+      }
+
+      await cargarNivelUsuario();
+      await cargarRutinasEjercicioHoy();
+
+      if (!mounted) return;
+
+      final valorExp = toInt(
+        response is Map<String, dynamic>
+            ? response['exp_ganada'] ?? rutinaSeleccionada['valor_exp_total']
+            : rutinaSeleccionada['valor_exp_total'],
+        0,
+      );
+
+      mostrarMensaje(
+        titulo: 'Rutina cumplida',
+        mensaje: 'Ganaste $valorExp puntos de experiencia por entrenar.',
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      mostrarMensaje(
+        titulo: 'Error',
+        mensaje: limpiarError(
+          error,
+          'No se pudo completar la rutina de ejercicio.',
+        ),
+      );
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        idRutinaEjercicioAccionando = null;
+      });
+    }
+  }
+
   Future<void> completarMision(Map<String, dynamic> misionSeleccionada) async {
+    if (misionSeleccionada['esEjercicio'] == true) {
+      await completarRutinaEjercicioHoy(misionSeleccionada);
+      return;
+    }
+
     if (misionSeleccionada['esDiaria'] == true) {
       await completarMisionDiariaHoy(misionSeleccionada);
       return;
@@ -1674,6 +1940,21 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
           builder: (context) {
             return const ActivitisDashDayScreen();
+          },
+        ),
+      );
+      return;
+    }
+
+    if (screenName == 'Ejercicios') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          settings: RouteSettings(
+            arguments: args,
+          ),
+          builder: (context) {
+            return const EjerciciosScreen();
           },
         ),
       );
@@ -1961,7 +2242,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           buildTabsRow(),
           const SizedBox(height: 8),
           buildMissionFilters(),
-          if (filtroMisiones != 'vida_diaria') ...[
+          if (filtroMisiones != 'vida_diaria' && filtroMisiones != 'ejercicio') ...[
             const SizedBox(height: 8),
             buildTipoFilterSelect(),
           ],
@@ -2152,6 +2433,15 @@ class _DashboardScreenState extends State<DashboardScreen>
             icon: Icons.home_outlined,
             color: tema.exito,
             onPress: () => navegarAScreen('MisionesDiarias'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ScreenButton(
+            title: 'Ejercicio',
+            icon: Icons.fitness_center_outlined,
+            color: const Color(0xFF0EA5E9),
+            onPress: () => navegarAScreen('Ejercicios'),
           ),
         ),
         const SizedBox(width: 8),
@@ -2630,6 +2920,12 @@ class _DashboardScreenState extends State<DashboardScreen>
         'icon': Icons.repeat_on_outlined,
       },
       {
+        'id': 'ejercicio',
+        'label': 'Ejercicio',
+        'count': totalEjercicio,
+        'icon': Icons.fitness_center_outlined,
+      },
+      {
         'id': 'pendientes',
         'label': 'Pendientes',
         'count': totalPendientes,
@@ -2873,7 +3169,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget buildMissionsArea() {
     final lista = misionesFiltradas;
 
-    if (cargandoMisiones || (filtroMisiones == 'vida_diaria' && cargandoMisionesDiarias)) {
+    if (cargandoMisiones ||
+        (filtroMisiones == 'vida_diaria' && cargandoMisionesDiarias) ||
+        (filtroMisiones == 'ejercicio' && cargandoRutinasEjercicio)) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2885,7 +3183,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             Text(
               filtroMisiones == 'vida_diaria'
                   ? 'Cargando vida diaria...'
-                  : 'Cargando misiones...',
+                  : filtroMisiones == 'ejercicio'
+                      ? 'Cargando ejercicio...'
+                      : 'Cargando misiones...',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
@@ -3468,6 +3768,8 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
   Widget build(BuildContext context) {
     final mision = widget.mision;
     final esDiaria = mision['esDiaria'] == true;
+    final esEjercicio = mision['esEjercicio'] == true;
+    final esRutinaEspecial = esDiaria || esEjercicio;
 
     final completada =
         mision['completada'] == true || estatusEsTerminado(mision['estatus']);
@@ -3480,6 +3782,8 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
     final enProceso = mision['estadoTiempo'] == 'en_proceso';
 
     String textoEstado() {
+      if (esEjercicio && completada) return 'Rutina hecha';
+      if (esEjercicio) return 'Ejercicio';
       if (esDiaria && completada) return 'Cumplida hoy';
       if (esDiaria) return 'Vida diaria';
       if (completada) return 'Terminada';
@@ -3660,20 +3964,34 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                       children: [
                         buildScheduleBox(
                           icon: Icons.calendar_today_outlined,
-                          text: esDiaria
+                          text: esRutinaEspecial
                               ? 'Hora ${mision['horaInicio'] ?? '--:--'}'
                               : 'Inicio ${mision['fechaInicioTexto'] ?? '--/-- --:--'}',
                         ),
                         buildScheduleBox(
-                          icon: esDiaria
+                          icon: esRutinaEspecial
                               ? Icons.event_repeat_outlined
                               : Icons.flag_outlined,
-                          text: esDiaria
+                          text: esRutinaEspecial
                               ? '${mision['fechaFinTexto'] ?? 'Hoy'}'
                               : 'Final ${mision['fechaFinTexto'] ?? '--/-- --:--'}',
                         ),
                       ],
                     ),
+                    if (esEjercicio && !completada)
+                      buildInfoBox(
+                        icon: Icons.fitness_center_outlined,
+                        text: 'Cumple tu rutina de 40 a 60 minutos y gana XP.',
+                        bg: const Color(0xFFDBEAFE),
+                        color: const Color(0xFF0369A1),
+                      ),
+                    if (esEjercicio && completada)
+                      buildInfoBox(
+                        icon: Icons.check_circle_outline,
+                        text: 'Ya completaste esta rutina de ejercicio hoy.',
+                        bg: const Color(0xFFDCFCE7),
+                        color: const Color(0xFF16A34A),
+                      ),
                     if (esDiaria && !completada)
                       buildInfoBox(
                         icon: Icons.auto_awesome_outlined,
@@ -3688,7 +4006,7 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFDCFCE7),
                         color: const Color(0xFF16A34A),
                       ),
-                    if (!esDiaria && enProceso)
+                    if (!esRutinaEspecial && enProceso)
                       buildInfoBox(
                         icon: Icons.play_circle_outline,
                         text:
@@ -3696,7 +4014,7 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFD1FAE5),
                         color: const Color(0xFF047857),
                       ),
-                    if (!esDiaria && (porAbrir || futura))
+                    if (!esRutinaEspecial && (porAbrir || futura))
                       buildInfoBox(
                         icon: Icons.hourglass_empty,
                         text: porAbrir
@@ -3705,14 +4023,14 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFDBEAFE),
                         color: const Color(0xFF0369A1),
                       ),
-                    if (!esDiaria && atrasada)
+                    if (!esRutinaEspecial && atrasada)
                       buildInfoBox(
                         icon: Icons.error_outline,
                         text: 'Ya inició, todavía puedes cumplirla.',
                         bg: const Color(0xFFFEF3C7),
                         color: const Color(0xFF92400E),
                       ),
-                    if (!esDiaria && noCumplida)
+                    if (!esRutinaEspecial && noCumplida)
                       buildInfoBox(
                         icon: Icons.warning_amber_outlined,
                         text:
@@ -3720,7 +4038,7 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFFEE2E2),
                         color: const Color(0xFFB91C1C),
                       ),
-                    if (!esDiaria && vencida && !noCumplida)
+                    if (!esRutinaEspecial && vencida && !noCumplida)
                       buildInfoBox(
                         icon: Icons.warning_amber_outlined,
                         text:
@@ -3763,9 +4081,9 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         buildCompleteButton(
                           completada: completada,
                           noCumplida: noCumplida,
-                          porAbrir: esDiaria ? false : porAbrir || futura,
-                          vencida: esDiaria ? false : vencida,
-                          esDiaria: esDiaria,
+                          porAbrir: esRutinaEspecial ? false : porAbrir || futura,
+                          vencida: esRutinaEspecial ? false : vencida,
+                          esDiaria: esRutinaEspecial,
                         ),
                       ],
                     ),
