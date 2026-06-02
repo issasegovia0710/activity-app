@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+
+import 'screens/home.dart';
 import 'screens/login.dart';
 import 'screens/dashboard.dart';
 import 'screens/estadisticas.dart';
 import 'screens/ajustes.dart';
 import 'screens/misiones.dart';
 import 'screens/activitis_dash.dart';
-import 'utils/notificaciones_tareas.dart';
 import 'screens/activitis_dash_day.dart';
-
+import 'utils/notificaciones_tareas.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,10 +30,12 @@ class ActivityApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      initialRoute: '/login',
+      initialRoute: '/',
       routes: {
+        '/': (context) => const HomeScreen(),
         '/login': (context) => const LoginScreen(),
-        '/home': (context) => const DashboardScreen(),
+        '/dashboard': (context) => const DashboardScreen(),
+        '/home': (context) => const HomeScreen(),
         '/estadisticas': (context) => const EstadisticasScreen(),
         '/ajustes': (context) => const AjustesScreen(),
         '/misiones': (context) => const MisionesScreen(),

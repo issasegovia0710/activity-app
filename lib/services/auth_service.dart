@@ -4,6 +4,9 @@ import '../config/api_config.dart';
 import '../config/storage_service.dart';
 
 class AuthService {
+  static const String tokenKey = 'token';
+  static const String usuarioKey = 'usuario';
+
   static Future<Map<String, dynamic>> login({
     required String username,
     required String password,
@@ -24,7 +27,7 @@ class AuthService {
     Map<String, dynamic> data = {};
 
     try {
-      data = jsonDecode(response.body);
+      data = Map<String, dynamic>.from(jsonDecode(response.body));
     } catch (_) {
       throw Exception('El servidor no regresó una respuesta JSON válida.');
     }
@@ -45,49 +48,71 @@ class AuthService {
     final token = data['token'];
     final usuario = data['usuario'];
 
-    if (token == null || token.toString().isEmpty) {
+    if (token == null || token.toString().trim().isEmpty) {
       throw Exception('El servidor no regresó token.');
     }
 
-    if (usuario == null || usuario['id'] == null) {
+    if (usuario == null || usuario is! Map || usuario['id'] == null) {
       throw Exception('El servidor no regresó usuario.id.');
     }
 
-    await StorageService.setItem('token', token.toString());
-    await StorageService.setItem('usuario', jsonEncode(usuario));
+    final usuarioMap = Map<String, dynamic>.from(usuario);
+
+    await guardarSesion(
+      token: token.toString(),
+      usuario: usuarioMap,
+    );
 
     return {
-      'token': token,
-      'usuario': usuario,
+      'token': token.toString(),
+      'usuario': usuarioMap,
     };
   }
 
+  static Future<void> guardarSesion({
+    required String token,
+    required Map<String, dynamic> usuario,
+  }) async {
+    await StorageService.setItem(tokenKey, token);
+    await StorageService.setItem(usuarioKey, jsonEncode(usuario));
+  }
+
   static Future<void> logout() async {
-    await StorageService.removeItem('token');
-    await StorageService.removeItem('usuario');
+    await StorageService.removeItem(tokenKey);
+    await StorageService.removeItem(usuarioKey);
+  }
+
+  static Future<bool> haySesionActiva() async {
+    final token = await getToken();
+
+    return token != null && token.trim().isNotEmpty;
   }
 
   static Future<bool> isLoggedIn() async {
-    final token = await StorageService.getItem('token');
-
-    return token != null && token.isNotEmpty;
+    return await haySesionActiva();
   }
 
   static Future<Map<String, dynamic>?> getUsuario() async {
-    final usuarioString = await StorageService.getItem('usuario');
+    final usuarioString = await StorageService.getItem(usuarioKey);
 
-    if (usuarioString == null || usuarioString.isEmpty) {
+    if (usuarioString == null || usuarioString.trim().isEmpty) {
       return null;
     }
 
     try {
-      return jsonDecode(usuarioString);
+      final decoded = jsonDecode(usuarioString);
+
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+
+      return null;
     } catch (_) {
       return null;
     }
   }
 
   static Future<String?> getToken() async {
-    return await StorageService.getItem('token');
+    return await StorageService.getItem(tokenKey);
   }
 }

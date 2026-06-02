@@ -863,21 +863,15 @@ class _DashboardScreenState extends State<DashboardScreen>
       return false;
     }
 
-    final fechaReferencia = obtenerFechaReferencia(
+    final fechaFin = obtenerFechaReferencia(
       mision,
       [
-        'fecha_completada',
-        'fecha_completado',
-        'completada_en',
-        'terminada_en',
-        'fecha_actualizacion',
-        'updated_at',
+        'fechaFin',
         'fecha_fin',
-        'fecha_inicio',
       ],
     );
 
-    return fechaDentroDeHoras(fechaReferencia, 48);
+    return esMismaFecha(fechaFin, ahoraTick);
   }
 
   String obtenerTipoMision(Map<String, dynamic> mision) {
@@ -1045,7 +1039,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     if (filtroMisiones == 'terminadas') {
-      return 'Solo se muestran las terminadas durante las últimas 48 horas.';
+      return 'Solo se muestran las misiones terminadas que finalizan hoy.';
     }
 
     return 'Las misiones activas, atrasadas o en proceso aparecerán aquí.';

@@ -8,171 +8,214 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  Map<String, dynamic>? usuario;
-
-  final Color fondo = const Color(0xFFF8FAFC);
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
+  final Color fondo = const Color(0xFF312E81);
+  final Color fondoSecundario = const Color(0xFF4C1D95);
   final Color primario = const Color(0xFF4F46E5);
-  final Color texto = const Color(0xFF1E293B);
-  final Color textoSuave = const Color(0xFF64748B);
+  final Color secundario = const Color(0xFFEC4899);
+  final Color barraXp = const Color(0xFFF59E0B);
+  final Color borde = const Color(0xFFC7D2FE);
+
+  late AnimationController controller;
+  late Animation<double> scaleAnimation;
+  late Animation<double> opacityAnimation;
+
+  bool revisandoSesion = true;
 
   @override
   void initState() {
     super.initState();
-    cargarUsuario();
-  }
 
-  Future<void> cargarUsuario() async {
-    final usuarioGuardado = await AuthService.getUsuario();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
 
-    if (!mounted) return;
+    scaleAnimation = Tween<double>(
+      begin: 0.92,
+      end: 1.06,
+    ).animate(
+      CurvedAnimation(
+        parent: controller,
+        curve: Curves.easeInOut,
+      ),
+    );
 
-    setState(() {
-      usuario = usuarioGuardado;
+    opacityAnimation = Tween<double>(
+      begin: 0.45,
+      end: 1,
+    ).animate(
+      CurvedAnimation(
+        parent: controller,
+        curve: Curves.easeInOut,
+      ),
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      verificarSesion();
     });
   }
 
-  Future<void> cerrarSesion() async {
-    await AuthService.logout();
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
 
-    if (!mounted) return;
+  Future<void> verificarSesion() async {
+    try {
+      final tieneSesion = await AuthService.isLoggedIn();
 
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      '/login',
-      (route) => false,
-    );
+      if (!mounted) return;
+
+      if (!tieneSesion) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/login',
+          (route) => false,
+        );
+        return;
+      }
+
+      final usuario = await AuthService.getUsuario();
+
+      if (!mounted) return;
+
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/dashboard',
+        (route) => false,
+        arguments: {
+          'usuario': usuario,
+        },
+      );
+    } catch (_) {
+      await AuthService.logout();
+
+      if (!mounted) return;
+
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/login',
+        (route) => false,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)?.settings.arguments;
-
-    if (usuario == null && args is Map<String, dynamic>) {
-      usuario = args;
-    }
-
-    final nombreUsuario = usuario?['nombre_usuario'] ??
-        usuario?['nombre'] ??
-        usuario?['usuario'] ??
-        'Usuario';
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
       backgroundColor: fondo,
-      appBar: AppBar(
-        backgroundColor: primario,
-        foregroundColor: Colors.white,
-        title: const Text(
-          'Activity',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: cerrarSesion,
-            icon: const Icon(Icons.logout),
-            tooltip: 'Cerrar sesión',
-          ),
-        ],
-      ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(22),
+        child: Stack(
           children: [
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: primario,
-                borderRadius: BorderRadius.circular(26),
-                boxShadow: [
-                  BoxShadow(
-                    color: primario.withOpacity(0.25),
-                    blurRadius: 20,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 58,
-                    height: 58,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.directions_run,
-                      color: Colors.white,
-                      size: 34,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Bienvenido',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
+            buildBackground(size),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedBuilder(
+                      animation: controller,
+                      builder: (context, child) {
+                        return Opacity(
+                          opacity: opacityAnimation.value,
+                          child: Transform.scale(
+                            scale: scaleAnimation.value,
+                            child: child,
                           ),
-                        ),
-                        Text(
-                          nombreUsuario.toString(),
-                          style: const TextStyle(
+                        );
+                      },
+                      child: Container(
+                        width: 112,
+                        height: 112,
+                        decoration: BoxDecoration(
+                          color: primario,
+                          shape: BoxShape.circle,
+                          border: Border.all(
                             color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
+                            width: 6,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: primario.withOpacity(0.42),
+                              blurRadius: 26,
+                              offset: const Offset(0, 12),
+                            ),
+                          ],
                         ),
-                      ],
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Positioned(
+                              top: 10,
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: barraXp,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 3,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.sentiment_satisfied_alt,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.only(top: 34),
+                              child: Icon(
+                                Icons.directions_run,
+                                color: Colors.white,
+                                size: 48,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 28),
+                    const Text(
+                      'Activity Day Life',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Revisando tu sesión...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: borde,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                    const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Panel principal',
-              style: TextStyle(
-                color: texto,
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Aquí vamos a conectar tus actividades, tareas, horarios y notificaciones.',
-              style: TextStyle(
-                color: textoSuave,
-                fontSize: 15,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 24),
-            buildOptionCard(
-              icon: Icons.task_alt,
-              title: 'Mis actividades',
-              subtitle: 'Ver y administrar actividades registradas.',
-              onTap: () {},
-            ),
-            const SizedBox(height: 14),
-            buildOptionCard(
-              icon: Icons.add_circle_outline,
-              title: 'Crear actividad',
-              subtitle: 'Agregar una nueva actividad al sistema.',
-              onTap: () {},
-            ),
-            const SizedBox(height: 14),
-            buildOptionCard(
-              icon: Icons.notifications_active_outlined,
-              title: 'Notificaciones',
-              subtitle: 'Recordatorios antes de vencer o expirar.',
-              onTap: () {},
             ),
           ],
         ),
@@ -180,73 +223,75 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget buildOptionCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(22),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: const Color(0xFFE2E8F0),
+  Widget buildBackground(Size size) {
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          Positioned(
+            top: -90,
+            right: -85,
+            child: Container(
+              width: 270,
+              height: 270,
+              decoration: BoxDecoration(
+                color: primario.withOpacity(0.33),
+                shape: BoxShape.circle,
+              ),
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: primario.withOpacity(0.10),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  icon,
-                  color: primario,
-                  size: 28,
-                ),
+          Positioned(
+            bottom: -60,
+            left: -60,
+            child: Container(
+              width: 210,
+              height: 210,
+              decoration: BoxDecoration(
+                color: fondoSecundario.withOpacity(0.58),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: texto,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: textoSuave,
-                        fontSize: 13,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: textoSuave,
-              ),
-            ],
+            ),
           ),
-        ),
+          Positioned(
+            bottom: 80,
+            right: 35,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: secundario.withOpacity(0.18),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.14),
+                ),
+              ),
+              child: const Icon(
+                Icons.auto_awesome,
+                color: Colors.white,
+                size: 38,
+              ),
+            ),
+          ),
+          Positioned(
+            top: size.height * 0.16,
+            left: 28,
+            child: Container(
+              width: 66,
+              height: 66,
+              decoration: BoxDecoration(
+                color: barraXp.withOpacity(0.18),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.14),
+                ),
+              ),
+              child: const Icon(
+                Icons.flash_on,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

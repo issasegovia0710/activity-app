@@ -78,97 +78,52 @@ class _LoginScreenState extends State<LoginScreen>
     fadeAnimation = Tween<double>(
       begin: 0,
       end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: introController,
-        curve: Curves.easeOut,
-      ),
+    ).animate(CurvedAnimation(parent: introController, curve: Curves.easeOut));
+
+    slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero).animate(
+          CurvedAnimation(parent: introController, curve: Curves.easeOutBack),
+        );
+
+    scaleAnimation = Tween<double>(begin: 0.92, end: 1).animate(
+      CurvedAnimation(parent: introController, curve: Curves.easeOutBack),
     );
 
-    slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.18),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: introController,
-        curve: Curves.easeOutBack,
-      ),
+    floatAnimation = Tween<double>(begin: 0, end: -10).animate(
+      CurvedAnimation(parent: floatController, curve: Curves.easeInOut),
     );
 
-    scaleAnimation = Tween<double>(
-      begin: 0.92,
-      end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: introController,
-        curve: Curves.easeOutBack,
-      ),
-    );
-
-    floatAnimation = Tween<double>(
-      begin: 0,
-      end: -10,
-    ).animate(
-      CurvedAnimation(
-        parent: floatController,
-        curve: Curves.easeInOut,
-      ),
-    );
-
-    runnerAnimation = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: runnerController,
-        curve: Curves.easeInOut,
-      ),
+    runnerAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: runnerController, curve: Curves.easeInOut),
     );
 
     glowAnimation = Tween<double>(
       begin: 0,
       end: 1,
-    ).animate(
-      CurvedAnimation(
-        parent: glowController,
-        curve: Curves.easeInOut,
-      ),
-    );
+    ).animate(CurvedAnimation(parent: glowController, curve: Curves.easeInOut));
 
-    transitionOpacity = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(
+    transitionOpacity = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
         parent: transitionController,
         curve: const Interval(0.0, 0.25, curve: Curves.easeOut),
       ),
     );
 
-    transitionScale = Tween<double>(
-      begin: 0.2,
-      end: 1,
-    ).animate(
+    transitionScale = Tween<double>(begin: 0.2, end: 1).animate(
       CurvedAnimation(
         parent: transitionController,
         curve: const Interval(0.0, 0.35, curve: Curves.easeOutBack),
       ),
     );
 
-    transitionRunnerX = Tween<double>(
-      begin: -1,
-      end: 1,
-    ).animate(
+    transitionRunnerX = Tween<double>(begin: -1, end: 1).animate(
       CurvedAnimation(
         parent: transitionController,
         curve: const Interval(0.25, 0.85, curve: Curves.easeInOutCubic),
       ),
     );
 
-    portalScale = Tween<double>(
-      begin: 0,
-      end: 8,
-    ).animate(
+    portalScale = Tween<double>(begin: 0, end: 8).animate(
       CurvedAnimation(
         parent: transitionController,
         curve: const Interval(0.45, 1.0, curve: Curves.easeInCubic),
@@ -229,8 +184,8 @@ class _LoginScreenState extends State<LoginScreen>
 
       Navigator.pushReplacementNamed(
         context,
-        '/home',
-        arguments: result['usuario'],
+        '/dashboard',
+        arguments: {'usuario': result['usuario']},
       );
     } catch (error) {
       if (!mounted) return;
@@ -245,17 +200,11 @@ class _LoginScreenState extends State<LoginScreen>
         message = message.replaceFirst('Exception: ', '');
       }
 
-      showMessage(
-        title: 'Fallo al entrar',
-        message: message,
-      );
+      showMessage(title: 'Fallo al entrar', message: message);
     }
   }
 
-  void showMessage({
-    required String title,
-    required String message,
-  }) {
+  void showMessage({required String title, required String message}) {
     showDialog(
       context: context,
       builder: (context) {
@@ -394,15 +343,9 @@ class _LoginScreenState extends State<LoginScreen>
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withOpacity(0.22),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.22)),
             ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 26,
-            ),
+            child: Icon(icon, color: Colors.white, size: 26),
           ),
         );
       },
@@ -413,16 +356,9 @@ class _LoginScreenState extends State<LoginScreen>
     final cardWidth = size.width > 500 ? 460.0 : size.width * 0.88;
 
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        glowAnimation,
-        runnerAnimation,
-      ]),
+      animation: Listenable.merge([glowAnimation, runnerAnimation]),
       builder: (context, child) {
-        final borderColor = Color.lerp(
-          borde,
-          primario,
-          glowAnimation.value,
-        )!;
+        final borderColor = Color.lerp(borde, primario, glowAnimation.value)!;
 
         final shadowOpacity = 0.15 + (glowAnimation.value * 0.20);
 
@@ -437,10 +373,7 @@ class _LoginScreenState extends State<LoginScreen>
           decoration: BoxDecoration(
             color: tarjeta,
             borderRadius: BorderRadius.circular(34),
-            border: Border.all(
-              color: borderColor,
-              width: 2,
-            ),
+            border: Border.all(color: borderColor, width: 2),
             boxShadow: [
               BoxShadow(
                 color: primario.withOpacity(shadowOpacity),
@@ -503,10 +436,7 @@ class _LoginScreenState extends State<LoginScreen>
                     Text(
                       'Corre hacia tus metas diarias',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: textoSuave,
-                        fontSize: 15,
-                      ),
+                      style: TextStyle(color: textoSuave, fontSize: 15),
                     ),
                     const SizedBox(height: 20),
                     buildMessageBox(),
@@ -578,10 +508,7 @@ class _LoginScreenState extends State<LoginScreen>
             decoration: BoxDecoration(
               color: primario,
               shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white,
-                width: 5,
-              ),
+              border: Border.all(color: Colors.white, width: 5),
               boxShadow: [
                 BoxShadow(
                   color: primario.withOpacity(0.35),
@@ -601,10 +528,7 @@ class _LoginScreenState extends State<LoginScreen>
                     decoration: BoxDecoration(
                       color: barraXp,
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 3,
-                      ),
+                      border: Border.all(color: Colors.white, width: 3),
                     ),
                     child: const Icon(
                       Icons.sentiment_satisfied_alt,
@@ -643,25 +567,16 @@ class _LoginScreenState extends State<LoginScreen>
   Widget buildMessageBox() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        vertical: 12,
-        horizontal: 14,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
       decoration: BoxDecoration(
         color: barraXp.withOpacity(0.09),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: barraXp.withOpacity(0.4),
-        ),
+        border: Border.all(color: barraXp.withOpacity(0.4)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.auto_awesome,
-            size: 20,
-            color: barraXp,
-          ),
+          Icon(Icons.auto_awesome, size: 20, color: barraXp),
           const SizedBox(width: 8),
           const Flexible(
             child: Text(
@@ -692,18 +607,11 @@ class _LoginScreenState extends State<LoginScreen>
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: borde,
-          width: 1.5,
-        ),
+        border: Border.all(color: borde, width: 1.5),
       ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: primario,
-            size: 22,
-          ),
+          Icon(icon, color: primario, size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: TextField(
@@ -720,9 +628,7 @@ class _LoginScreenState extends State<LoginScreen>
               decoration: InputDecoration(
                 border: InputBorder.none,
                 hintText: hint,
-                hintStyle: const TextStyle(
-                  color: Color(0xFF94A3B8),
-                ),
+                hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
               ),
             ),
           ),
@@ -788,48 +694,40 @@ class _LoginScreenState extends State<LoginScreen>
                   ],
                 )
               : transitioning
-                  ? const Row(
-                      key: ValueKey('success'),
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.check_circle,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                        SizedBox(width: 9),
-                        Text(
-                          'ACCESO CONCEDIDO',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    )
-                  : const Row(
-                      key: ValueKey('normal'),
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.rocket_launch,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                        SizedBox(width: 9),
-                        Text(
-                          'ENTRAR AL SISTEMA',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
+              ? const Row(
+                  key: ValueKey('success'),
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.white, size: 22),
+                    SizedBox(width: 9),
+                    Text(
+                      'ACCESO CONCEDIDO',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        letterSpacing: 0.5,
+                      ),
                     ),
+                  ],
+                )
+              : const Row(
+                  key: ValueKey('normal'),
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.rocket_launch, color: Colors.white, size: 22),
+                    SizedBox(width: 9),
+                    Text(
+                      'ENTRAR AL SISTEMA',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -855,15 +753,9 @@ class _LoginScreenState extends State<LoginScreen>
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         shape: BoxShape.circle,
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-        ),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: Icon(
-        icon,
-        size: 16,
-        color: color,
-      ),
+      child: Icon(icon, size: 16, color: color),
     );
   }
 
@@ -889,10 +781,7 @@ class _LoginScreenState extends State<LoginScreen>
                         decoration: BoxDecoration(
                           color: primario,
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white,
-                            width: 10,
-                          ),
+                          border: Border.all(color: Colors.white, width: 10),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.white.withOpacity(0.9),
@@ -903,10 +792,7 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
                     Transform.translate(
-                      offset: Offset(
-                        transitionRunnerX.value * size.width,
-                        0,
-                      ),
+                      offset: Offset(transitionRunnerX.value * size.width, 0),
                       child: SizedBox(
                         width: 180,
                         height: 140,
