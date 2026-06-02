@@ -288,7 +288,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     await cargarNivelUsuario();
-    await cargarMisionesDiariasHoy();
     await cargarMisionesDelDia();
   }
 
@@ -1023,7 +1022,82 @@ class _DashboardScreenState extends State<DashboardScreen>
     return copia;
   }
 
+  Map<String, dynamic> mapearMisionDiariaHoyAMisionDashboard(
+    Map<String, dynamic> mision,
+  ) {
+    final completada = boolDesdeValor(mision['completada_hoy'], false);
+    final valorExp = toInt(mision['valor_exp'] ?? mision['exp_value'], 0);
+    final hora = mision['hora']?.toString() ?? '08:00';
+    final dias = mision['dias'];
+
+    String textoDias() {
+      if (dias is List) {
+        final lista = dias.map((item) => item.toString()).toList();
+
+        if (lista.length == 7) return 'Todos los días';
+
+        if (lista.length == 5 &&
+            lista.contains('L') &&
+            lista.contains('M') &&
+            lista.contains('MI') &&
+            lista.contains('J') &&
+            lista.contains('V')) {
+          return 'Lunes a viernes';
+        }
+
+        if (lista.length == 2 && lista.contains('S') && lista.contains('D')) {
+          return 'Fin de semana';
+        }
+
+        return lista.join(', ');
+      }
+
+      final texto = dias?.toString().trim() ?? '';
+
+      if (texto.isEmpty) return 'Hoy';
+
+      return texto;
+    }
+
+    return {
+      ...mision,
+      'esDiaria': true,
+      'titulo': mision['nombre'] ?? 'Misión diaria',
+      'categoria': 'Vida diaria',
+      'tipo': 'Vida diaria',
+      'xp': valorExp,
+      'valor_exp': valorExp,
+      'color': tema.exito,
+      'icono': Icons.repeat_on_outlined,
+      'estatus': completada ? 'completada' : 'pendiente',
+      'completada': completada,
+      'noCumplida': false,
+      'fechaInicio': null,
+      'fechaFin': null,
+      'fechaInicioTexto': 'Hoy $hora',
+      'fechaFinTexto': textoDias(),
+      'fechaLimiteTexto': '',
+      'fechaCorta': 'Hoy',
+      'horaInicio': hora,
+      'horaFinal': null,
+      'vencida': false,
+      'atrasada': false,
+      'enProceso': false,
+      'porAbrir': false,
+      'futura': false,
+      'estadoTiempo': completada ? 'completada' : 'activa',
+      'cuentaRegresiva': '',
+      'penalizacion': 0,
+    };
+  }
+
   List<Map<String, dynamic>> get misionesFiltradas {
+    if (filtroMisiones == 'vida_diaria') {
+      final diarias = misionesDiariasHoy.map(mapearMisionDiariaHoyAMisionDashboard).toList();
+
+      return ordenarMisiones(diarias);
+    }
+
     final filtradas = obtenerMisionesPorEstado(filtroMisiones)
         .where(coincideFiltroTipoMision)
         .toList();
@@ -1033,6 +1107,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return ordenarMisiones(filtradas);
+  }
+
+  int get totalVidaDiaria {
+    return misionesDiariasHoy.length;
   }
 
   int get totalPendientes {
@@ -1060,6 +1138,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   String get textoVacioFiltro {
+    if (filtroMisiones == 'vida_diaria') {
+      return 'No tienes misiones de vida diaria para hoy.';
+    }
+
     if (filtroMisiones == 'proximas') {
       return 'No tienes misiones próximas.';
     }
@@ -1076,6 +1158,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   String get descripcionVacioFiltro {
+    if (filtroMisiones == 'vida_diaria') {
+      return 'Cuando toque una rutina diaria, aparecerá aquí para marcarla como cumplida.';
+    }
+
     if (filtroMisiones == 'proximas') {
       return 'Cuando una misión tenga fecha futura, aparecerá aquí.';
     }
@@ -1308,6 +1394,25 @@ class _DashboardScreenState extends State<DashboardScreen>
     await cargarMisionesDelDia();
   }
 
+  Future<void> recargarMisionesActuales() async {
+    if (filtroMisiones == 'vida_diaria') {
+      await cargarMisionesDiariasHoy();
+      return;
+    }
+
+    await cargarMisionesDelDia();
+  }
+
+  void seleccionarFiltroMisiones(String id) {
+    setState(() {
+      filtroMisiones = id;
+    });
+
+    if (id == 'vida_diaria') {
+      cargarMisionesDiariasHoy();
+    }
+  }
+
   Future<void> completarMisionDiariaHoy(
     Map<String, dynamic> misionSeleccionada,
   ) async {
@@ -1382,6 +1487,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> completarMision(Map<String, dynamic> misionSeleccionada) async {
+    if (misionSeleccionada['esDiaria'] == true) {
+      await completarMisionDiariaHoy(misionSeleccionada);
+      return;
+    }
+
     if (!estatusEsPendiente(misionSeleccionada['estatus'])) {
       return;
     }
@@ -1850,11 +1960,11 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(height: 8),
           buildTabsRow(),
           const SizedBox(height: 8),
-          buildDailyMissionsSection(),
-          const SizedBox(height: 8),
           buildMissionFilters(),
-          const SizedBox(height: 8),
-          buildTipoFilterSelect(),
+          if (filtroMisiones != 'vida_diaria') ...[
+            const SizedBox(height: 8),
+            buildTipoFilterSelect(),
+          ],
           Expanded(
             child: buildMissionsArea(),
           ),
@@ -2067,7 +2177,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           onTap: cargandoMisiones
               ? null
               : () {
-                  cargarDashboardCompleto();
+                  recargarMisionesActuales();
                 },
           child: Container(
             width: 72,
@@ -2134,7 +2244,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         GestureDetector(
-          onTap: cargarDashboardCompleto,
+          onTap: recargarMisionesActuales,
           child: Container(
             width: 40,
             height: 40,
@@ -2514,6 +2624,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget buildMissionFilters() {
     final filtros = [
       {
+        'id': 'vida_diaria',
+        'label': 'Vida diaria',
+        'count': totalVidaDiaria,
+        'icon': Icons.repeat_on_outlined,
+      },
+      {
         'id': 'pendientes',
         'label': 'Pendientes',
         'count': totalPendientes,
@@ -2556,9 +2672,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
           return GestureDetector(
             onTap: () {
-              setState(() {
-                filtroMisiones = id;
-              });
+              seleccionarFiltroMisiones(id);
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -2759,18 +2873,20 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget buildMissionsArea() {
     final lista = misionesFiltradas;
 
-    if (cargandoMisiones) {
+    if (cargandoMisiones || (filtroMisiones == 'vida_diaria' && cargandoMisionesDiarias)) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            CircularProgressIndicator(
+          children: [
+            const CircularProgressIndicator(
               color: Colors.white,
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text(
-              'Cargando misiones...',
-              style: TextStyle(
+              filtroMisiones == 'vida_diaria'
+                  ? 'Cargando vida diaria...'
+                  : 'Cargando misiones...',
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
@@ -3351,6 +3467,7 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
   @override
   Widget build(BuildContext context) {
     final mision = widget.mision;
+    final esDiaria = mision['esDiaria'] == true;
 
     final completada =
         mision['completada'] == true || estatusEsTerminado(mision['estatus']);
@@ -3363,6 +3480,8 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
     final enProceso = mision['estadoTiempo'] == 'en_proceso';
 
     String textoEstado() {
+      if (esDiaria && completada) return 'Cumplida hoy';
+      if (esDiaria) return 'Vida diaria';
       if (completada) return 'Terminada';
       if (noCumplida) return 'No cumplida';
       if (vencida) return 'Vencida';
@@ -3541,17 +3660,35 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                       children: [
                         buildScheduleBox(
                           icon: Icons.calendar_today_outlined,
-                          text:
-                              'Inicio ${mision['fechaInicioTexto'] ?? '--/-- --:--'}',
+                          text: esDiaria
+                              ? 'Hora ${mision['horaInicio'] ?? '--:--'}'
+                              : 'Inicio ${mision['fechaInicioTexto'] ?? '--/-- --:--'}',
                         ),
                         buildScheduleBox(
-                          icon: Icons.flag_outlined,
-                          text:
-                              'Final ${mision['fechaFinTexto'] ?? '--/-- --:--'}',
+                          icon: esDiaria
+                              ? Icons.event_repeat_outlined
+                              : Icons.flag_outlined,
+                          text: esDiaria
+                              ? '${mision['fechaFinTexto'] ?? 'Hoy'}'
+                              : 'Final ${mision['fechaFinTexto'] ?? '--/-- --:--'}',
                         ),
                       ],
                     ),
-                    if (enProceso)
+                    if (esDiaria && !completada)
+                      buildInfoBox(
+                        icon: Icons.auto_awesome_outlined,
+                        text: 'Puedes cumplirla una vez hoy. No penaliza si no la haces.',
+                        bg: const Color(0xFFD1FAE5),
+                        color: const Color(0xFF047857),
+                      ),
+                    if (esDiaria && completada)
+                      buildInfoBox(
+                        icon: Icons.check_circle_outline,
+                        text: 'Ya cumpliste esta misión hoy.',
+                        bg: const Color(0xFFDCFCE7),
+                        color: const Color(0xFF16A34A),
+                      ),
+                    if (!esDiaria && enProceso)
                       buildInfoBox(
                         icon: Icons.play_circle_outline,
                         text:
@@ -3559,7 +3696,7 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFD1FAE5),
                         color: const Color(0xFF047857),
                       ),
-                    if (porAbrir || futura)
+                    if (!esDiaria && (porAbrir || futura))
                       buildInfoBox(
                         icon: Icons.hourglass_empty,
                         text: porAbrir
@@ -3568,14 +3705,14 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFDBEAFE),
                         color: const Color(0xFF0369A1),
                       ),
-                    if (atrasada)
+                    if (!esDiaria && atrasada)
                       buildInfoBox(
                         icon: Icons.error_outline,
                         text: 'Ya inició, todavía puedes cumplirla.',
                         bg: const Color(0xFFFEF3C7),
                         color: const Color(0xFF92400E),
                       ),
-                    if (noCumplida)
+                    if (!esDiaria && noCumplida)
                       buildInfoBox(
                         icon: Icons.warning_amber_outlined,
                         text:
@@ -3583,7 +3720,7 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFFEE2E2),
                         color: const Color(0xFFB91C1C),
                       ),
-                    if (vencida && !noCumplida)
+                    if (!esDiaria && vencida && !noCumplida)
                       buildInfoBox(
                         icon: Icons.warning_amber_outlined,
                         text:
@@ -3626,8 +3763,9 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         buildCompleteButton(
                           completada: completada,
                           noCumplida: noCumplida,
-                          porAbrir: porAbrir || futura,
-                          vencida: vencida,
+                          porAbrir: esDiaria ? false : porAbrir || futura,
+                          vencida: esDiaria ? false : vencida,
+                          esDiaria: esDiaria,
                         ),
                       ],
                     ),
@@ -3722,16 +3860,17 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
     required bool noCumplida,
     required bool porAbrir,
     required bool vencida,
+    bool esDiaria = false,
   }) {
     Color bg = const Color(0xFF4F46E5);
     IconData icon = Icons.check;
-    String text = 'Completar';
+    String text = esDiaria ? 'Cumplir' : 'Completar';
     bool bloqueada = false;
 
     if (completada) {
       bg = const Color(0xFF16A34A);
       icon = Icons.done_all;
-      text = 'Lista';
+      text = esDiaria ? 'Cumplida' : 'Lista';
       bloqueada = true;
     } else if (noCumplida) {
       bg = const Color(0xFF94A3B8);
