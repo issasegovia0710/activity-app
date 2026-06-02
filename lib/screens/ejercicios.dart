@@ -47,6 +47,8 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       TextEditingController(text: '8');
   final TextEditingController ejercicioExpController =
       TextEditingController(text: '10');
+  final TextEditingController buscadorEjercicioController =
+      TextEditingController();
 
   final TextEditingController rutinaNombreController =
       TextEditingController();
@@ -80,6 +82,10 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
 
   bool mostrarPanelEjercicio = false;
   bool mostrarPanelRutina = false;
+
+  String filtroGrupoEjercicio = 'Todos';
+  int paginaEjercicios = 0;
+  final int ejerciciosPorPagina = 6;
 
   late AnimationController introController;
   late AnimationController floatController;
@@ -167,6 +173,7 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
     ejercicioTipoController.dispose();
     ejercicioDuracionController.dispose();
     ejercicioExpController.dispose();
+    buscadorEjercicioController.dispose();
 
     rutinaNombreController.dispose();
     rutinaDescripcionController.dispose();
@@ -313,6 +320,206 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
     if (texto.contains('movilidad')) return const Color(0xFF14B8A6);
 
     return const Color(0xFF0EA5E9);
+  }
+
+
+  String textoSeguro(dynamic valor) {
+    if (valor == null) return '';
+
+    return valor.toString().trim();
+  }
+
+  String descripcionEjercicio(Map<String, dynamic> ejercicio) {
+    final descripcion = textoSeguro(ejercicio['descripcion']);
+
+    if (descripcion.isNotEmpty) {
+      return descripcion;
+    }
+
+    final nombre = textoSeguro(ejercicio['nombre']).toLowerCase();
+    final grupo = textoSeguro(ejercicio['grupo_muscular']).toLowerCase();
+
+    if (nombre.contains('jab')) {
+      return 'Golpe recto con la mano delantera. Saca el puño, gira ligeramente el hombro y regresa rápido a la guardia.';
+    }
+
+    if (nombre.contains('cross')) {
+      return 'Golpe recto con la mano trasera. Gira cadera y hombro al lanzar el golpe, luego vuelve a cubrirte.';
+    }
+
+    if (nombre.contains('correr')) {
+      return 'Corre a ritmo controlado. Mantén pasos cortos, espalda recta y respiración constante. No empieces a máxima velocidad.';
+    }
+
+    if (nombre.contains('sentadilla')) {
+      return 'Baja la cadera como si fueras a sentarte. Mantén espalda recta, rodillas alineadas y sube empujando con las piernas.';
+    }
+
+    if (nombre.contains('lagartija')) {
+      return 'Coloca manos al ancho de hombros, baja el pecho controlado y sube empujando el piso. Mantén abdomen firme.';
+    }
+
+    if (nombre.contains('plancha')) {
+      return 'Apoya antebrazos o manos, estira el cuerpo y aprieta abdomen. Evita subir o hundir la cadera.';
+    }
+
+    if (grupo.contains('box')) {
+      return 'Mantén guardia arriba, barbilla abajo y pies activos. Golpea y regresa rápido las manos a la cara.';
+    }
+
+    return 'Realiza el movimiento de forma controlada. Calienta antes, cuida la postura y detente si aparece dolor fuerte o raro.';
+  }
+
+  List<String> pasosEjercicio(Map<String, dynamic> ejercicio) {
+    final nombre = textoSeguro(ejercicio['nombre']).toLowerCase();
+    final grupo = textoSeguro(ejercicio['grupo_muscular']).toLowerCase();
+
+    if (nombre.contains('jab')) {
+      return [
+        'Ponte en guardia con una pierna adelante y manos arriba.',
+        'Lanza la mano delantera en línea recta.',
+        'Gira un poco el puño al final del golpe.',
+        'Regresa la mano rápido a la cara.',
+      ];
+    }
+
+    if (nombre.contains('cross')) {
+      return [
+        'Ponte en guardia con la mano trasera lista.',
+        'Gira el pie trasero, cadera y hombro.',
+        'Lanza el golpe recto hacia el frente.',
+        'Regresa a guardia sin bajar la otra mano.',
+      ];
+    }
+
+    if (nombre.contains('correr') || nombre.contains('caminar')) {
+      return [
+        'Empieza suave durante los primeros minutos.',
+        'Mantén pasos cortos y constantes.',
+        'Respira de forma rítmica y no te encorves.',
+        'Baja el ritmo si te falta demasiado el aire.',
+      ];
+    }
+
+    if (nombre.contains('sentadilla')) {
+      return [
+        'Abre los pies al ancho de hombros.',
+        'Baja la cadera hacia atrás y abajo.',
+        'Mantén rodillas alineadas con los pies.',
+        'Sube empujando el piso y apretando piernas.',
+      ];
+    }
+
+    if (nombre.contains('lagartija')) {
+      return [
+        'Coloca manos al ancho de hombros.',
+        'Aprieta abdomen y glúteos para no doblar la espalda.',
+        'Baja el pecho de forma controlada.',
+        'Sube empujando con brazos y pecho.',
+      ];
+    }
+
+    if (nombre.contains('plancha')) {
+      return [
+        'Apoya antebrazos o manos en el piso.',
+        'Estira piernas y mantén el cuerpo en línea.',
+        'Aprieta abdomen todo el tiempo.',
+        'No dejes caer la cadera ni la subas demasiado.',
+      ];
+    }
+
+    if (grupo.contains('box')) {
+      return [
+        'Empieza con guardia arriba y barbilla abajo.',
+        'Muévete suave con pasos cortos.',
+        'Haz el golpe o combinación indicada.',
+        'Regresa siempre las manos a la cara.',
+      ];
+    }
+
+    return [
+      'Calienta antes de empezar.',
+      'Haz el movimiento lento primero para entenderlo.',
+      'Mantén abdomen firme y buena postura.',
+      'Aumenta intensidad solo cuando domines la técnica.',
+    ];
+  }
+
+  List<String> get gruposEjerciciosDisponibles {
+    final grupos = <String>{};
+
+    for (final ejercicio in ejercicios) {
+      final grupo = textoSeguro(ejercicio['grupo_muscular']);
+
+      if (grupo.isNotEmpty) {
+        grupos.add(grupo);
+      }
+    }
+
+    final lista = grupos.toList();
+    lista.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    return ['Todos', ...lista];
+  }
+
+  List<Map<String, dynamic>> get ejerciciosFiltradosCatalogo {
+    final busqueda = buscadorEjercicioController.text.trim().toLowerCase();
+
+    return ejercicios.where((ejercicio) {
+      final nombre = textoSeguro(ejercicio['nombre']).toLowerCase();
+      final descripcion = textoSeguro(ejercicio['descripcion']).toLowerCase();
+      final grupo = textoSeguro(ejercicio['grupo_muscular']);
+      final tipo = textoSeguro(ejercicio['tipo']).toLowerCase();
+
+      final coincideBusqueda = busqueda.isEmpty ||
+          nombre.contains(busqueda) ||
+          descripcion.contains(busqueda) ||
+          grupo.toLowerCase().contains(busqueda) ||
+          tipo.contains(busqueda);
+
+      final coincideGrupo = filtroGrupoEjercicio == 'Todos' ||
+          grupo.toLowerCase() == filtroGrupoEjercicio.toLowerCase();
+
+      return coincideBusqueda && coincideGrupo;
+    }).toList();
+  }
+
+  int get totalPaginasEjercicios {
+    final total = ejerciciosFiltradosCatalogo.length;
+
+    if (total == 0) return 1;
+
+    return (total / ejerciciosPorPagina).ceil();
+  }
+
+  List<Map<String, dynamic>> get ejerciciosPaginaActual {
+    final lista = ejerciciosFiltradosCatalogo;
+    final inicio = paginaEjercicios * ejerciciosPorPagina;
+    final fin = inicio + ejerciciosPorPagina;
+
+    if (inicio >= lista.length) {
+      return [];
+    }
+
+    return lista.sublist(
+      inicio,
+      fin > lista.length ? lista.length : fin,
+    );
+  }
+
+  void cambiarFiltroGrupoEjercicio(String grupo) {
+    setState(() {
+      filtroGrupoEjercicio = grupo;
+      paginaEjercicios = 0;
+    });
+  }
+
+  void cambiarPaginaEjercicios(int nuevaPagina) {
+    final ultimaPagina = totalPaginasEjercicios - 1;
+
+    setState(() {
+      paginaEjercicios = nuevaPagina.clamp(0, ultimaPagina);
+    });
   }
 
   Map<String, dynamic> normalizarEjercicio(Map<String, dynamic> item) {
@@ -1512,7 +1719,7 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
           buildTextInput(
             controller: ejercicioDescripcionController,
             icon: Icons.description_outlined,
-            hint: 'Detalles opcionales',
+            hint: 'Explica cómo se hace. Ej. Baja la cadera, espalda recta y sube controlado.',
             multiline: true,
           ),
           buildLabel('Grupo muscular'),
@@ -2116,6 +2323,8 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       );
     }
 
+    final ejerciciosParaElegir = ejerciciosFiltradosCatalogo;
+
     if (ejercicios.isEmpty) {
       return buildMiniEmpty(
         icon: Icons.fitness_center_outlined,
@@ -2124,16 +2333,24 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       );
     }
 
+    if (ejerciciosParaElegir.isEmpty) {
+      return buildMiniEmpty(
+        icon: Icons.search_off_outlined,
+        title: 'Sin resultados',
+        text: 'Cambia el buscador o el filtro para ver más ejercicios.',
+      );
+    }
+
     return SizedBox(
-      height: 142,
+      height: 170,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: ejercicios.length,
+        itemCount: ejerciciosParaElegir.length,
         separatorBuilder: (context, index) {
           return const SizedBox(width: 10);
         },
         itemBuilder: (context, index) {
-          final ejercicio = ejercicios[index];
+          final ejercicio = ejerciciosParaElegir[index];
           final color = colorPorGrupo(ejercicio['grupo_muscular']?.toString());
 
           return Container(
@@ -2190,7 +2407,21 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: Text(
+                    descripcionEjercicio(ejercicio),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tema.textoSuave,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      height: 1.25,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
                 GestureDetector(
                   onTap: () {
                     agregarEjercicioARutina(ejercicio);
@@ -2702,6 +2933,11 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
   }
 
   Widget buildEjerciciosList() {
+    final filtrados = ejerciciosFiltradosCatalogo;
+    final pagina = ejerciciosPaginaActual;
+    final inicio = filtrados.isEmpty ? 0 : paginaEjercicios * ejerciciosPorPagina + 1;
+    final fin = filtrados.isEmpty ? 0 : inicio + pagina.length - 1;
+
     return buildCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2711,9 +2947,13 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
             title: 'Catálogo de ejercicios',
             subtitle: cargandoEjercicios
                 ? 'Consultando ejercicios...'
-                : '${ejercicios.length} ejercicios disponibles',
+                : filtrados.length == ejercicios.length
+                    ? '${ejercicios.length} ejercicios disponibles'
+                    : '${filtrados.length} de ${ejercicios.length} ejercicios encontrados',
             color: const Color(0xFF0EA5E9),
           ),
+          const SizedBox(height: 14),
+          buildEjerciciosToolbar(),
           const SizedBox(height: 14),
           if (cargandoEjercicios && ejercicios.isEmpty)
             buildLoadingState('Cargando ejercicios...')
@@ -2723,22 +2963,209 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
               title: 'Sin ejercicios',
               text: 'Agrega ejercicios para construir tus rutinas.',
             )
-          else
+          else if (filtrados.isEmpty)
+            buildMiniEmpty(
+              icon: Icons.search_off_outlined,
+              title: 'Sin resultados',
+              text: 'Prueba con otro nombre, grupo muscular o tipo.',
+            )
+          else ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(
+                'Mostrando $inicio-$fin de ${filtrados.length}. Toca “Cómo hacerlo” para ver la explicación.',
+                style: TextStyle(
+                  color: tema.textoSuave,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
             Column(
-              children: ejercicios.map((ejercicio) {
-                return buildEjercicioCard(ejercicio);
+              children: pagina.asMap().entries.map((entry) {
+                final numero = paginaEjercicios * ejerciciosPorPagina + entry.key + 1;
+                final ejercicio = entry.value;
+
+                return buildEjercicioCard(ejercicio, numero);
               }).toList(),
             ),
+            buildPaginadorEjercicios(),
+          ],
         ],
       ),
     );
   }
 
-  Widget buildEjercicioCard(Map<String, dynamic> ejercicio) {
+  Widget buildEjerciciosToolbar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0EA5E9).withOpacity(0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF0EA5E9).withOpacity(0.18),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.search,
+                color: Color(0xFF0EA5E9),
+                size: 21,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: buscadorEjercicioController,
+                  onChanged: (_) {
+                    setState(() {
+                      paginaEjercicios = 0;
+                    });
+                  },
+                  style: TextStyle(
+                    color: tema.texto,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Buscar ejercicio, tipo o descripción...',
+                    hintStyle: TextStyle(
+                      color: tema.textoSuave,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              if (buscadorEjercicioController.text.trim().isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      buscadorEjercicioController.clear();
+                      paginaEjercicios = 0;
+                    });
+                  },
+                  child: Icon(
+                    Icons.close,
+                    color: tema.textoSuave,
+                    size: 20,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: gruposEjerciciosDisponibles.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final grupo = gruposEjerciciosDisponibles[index];
+              final activo = filtroGrupoEjercicio == grupo;
+              final color = grupo == 'Todos'
+                  ? const Color(0xFF0EA5E9)
+                  : colorPorGrupo(grupo);
+
+              return GestureDetector(
+                onTap: () {
+                  cambiarFiltroGrupoEjercicio(grupo);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: activo ? color : color.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: color.withOpacity(0.25),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    grupo,
+                    style: TextStyle(
+                      color: activo ? Colors.white : color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildPaginadorEjercicios() {
+    if (totalPaginasEjercicios <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: tema.fondoSecundario.withOpacity(0.72),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: tema.borde,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: paginaEjercicios <= 0
+                  ? null
+                  : () {
+                      cambiarPaginaEjercicios(paginaEjercicios - 1);
+                    },
+              icon: const Icon(Icons.chevron_left),
+              label: const Text('Anterior'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${paginaEjercicios + 1}/$totalPaginasEjercicios',
+            style: TextStyle(
+              color: tema.texto,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: paginaEjercicios >= totalPaginasEjercicios - 1
+                  ? null
+                  : () {
+                      cambiarPaginaEjercicios(paginaEjercicios + 1);
+                    },
+              icon: const Icon(Icons.chevron_right),
+              label: const Text('Siguiente'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF0EA5E9),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildEjercicioCard(Map<String, dynamic> ejercicio, int numero) {
     final id = toInt(ejercicio['id'], 0);
     final accionando = idEjercicioAccionando == id;
     final color = colorPorGrupo(ejercicio['grupo_muscular']?.toString());
     final esGlobal = ejercicio['es_global'] == true;
+    final descripcion = descripcionEjercicio(ejercicio);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -2751,100 +3178,344 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
           width: 1.2,
         ),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: accionando
-                ? const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
+          Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                  )
-                : const Icon(
-                    Icons.fitness_center_outlined,
-                    color: Colors.white,
-                    size: 23,
+                    child: accionando
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.fitness_center_outlined,
+                            color: Colors.white,
+                            size: 23,
+                          ),
                   ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  ejercicio['nombre']?.toString() ?? 'Ejercicio',
-                  style: TextStyle(
-                    color: tema.texto,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${ejercicio['grupo_muscular'] ?? 'Sin grupo'} • ${ejercicio['tipo'] ?? 'Sin tipo'}',
-                  style: TextStyle(
-                    color: tema.textoSuave,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 7),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    buildBadge(
-                      icon: Icons.timer_outlined,
-                      text: '${ejercicio['duracion_minutos'] ?? 0} min',
-                      color: const Color(0xFF0EA5E9),
-                    ),
-                    buildBadge(
-                      icon: Icons.flash_on,
-                      text: '${ejercicio['valor_exp'] ?? 0} XP',
-                      color: tema.aviso,
-                    ),
-                    if (esGlobal)
-                      buildBadge(
-                        icon: Icons.public_outlined,
-                        text: 'Global',
-                        color: tema.primario,
+                  Positioned(
+                    top: -7,
+                    left: -7,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: color,
+                          width: 1.5,
+                        ),
                       ),
+                      child: Text(
+                        '$numero',
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ejercicio['nombre']?.toString() ?? 'Ejercicio',
+                      style: TextStyle(
+                        color: tema.texto,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${ejercicio['grupo_muscular'] ?? 'Sin grupo'} • ${ejercicio['tipo'] ?? 'Sin tipo'}',
+                      style: TextStyle(
+                        color: tema.textoSuave,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: [
+                        buildBadge(
+                          icon: Icons.timer_outlined,
+                          text: '${ejercicio['duracion_minutos'] ?? 0} min',
+                          color: const Color(0xFF0EA5E9),
+                        ),
+                        buildBadge(
+                          icon: Icons.flash_on,
+                          text: '${ejercicio['valor_exp'] ?? 0} XP',
+                          color: tema.aviso,
+                        ),
+                        if (esGlobal)
+                          buildBadge(
+                            icon: Icons.public_outlined,
+                            text: 'Global',
+                            color: tema.primario,
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: accionando
+                    ? null
+                    : () {
+                        confirmarEliminarEjercicio(ejercicio);
+                      },
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: tema.peligro.withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.delete_outline,
+                    color: tema.peligro,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.70),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: color.withOpacity(0.14),
+              ),
+            ),
+            child: Text(
+              descripcion,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tema.textoSuave,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: accionando
-                ? null
-                : () {
-                    confirmarEliminarEjercicio(ejercicio);
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    mostrarDetalleEjercicio(ejercicio);
                   },
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: tema.peligro.withOpacity(0.12),
-                shape: BoxShape.circle,
+                  child: Container(
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Text(
+                      'Cómo hacerlo',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              child: Icon(
-                Icons.delete_outline,
-                color: tema.peligro,
-                size: 20,
-              ),
-            ),
+            ],
           ),
         ],
       ),
+    );
+  }
+
+  void mostrarDetalleEjercicio(Map<String, dynamic> ejercicio) {
+    final color = colorPorGrupo(ejercicio['grupo_muscular']?.toString());
+    final nombre = ejercicio['nombre']?.toString() ?? 'Ejercicio';
+    final descripcion = descripcionEjercicio(ejercicio);
+    final pasos = pasosEjercicio(ejercicio);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: tema.tarjeta,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+          contentPadding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(18, 8, 18, 16),
+          title: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.fitness_center_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  nombre,
+                  style: TextStyle(
+                    color: tema.texto,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Descripción',
+                    style: TextStyle(
+                      color: tema.texto,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    descripcion,
+                    style: TextStyle(
+                      color: tema.textoSuave,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Pasos rápidos',
+                    style: TextStyle(
+                      color: tema.texto,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...pasos.asMap().entries.map((entry) {
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: color.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 22,
+                            height: 22,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${entry.key + 1}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              entry.value,
+                              style: TextStyle(
+                                color: tema.texto,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Consejo: si duele una articulación, baja intensidad o cambia el ejercicio. La técnica vale más que hacerlo rápido.',
+                    style: TextStyle(
+                      color: tema.textoSuave,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text(
+                'Cerrar',
+                style: TextStyle(
+                  color: tema.primario,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
