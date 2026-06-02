@@ -49,6 +49,8 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       TextEditingController(text: '10');
   final TextEditingController buscadorEjercicioController =
       TextEditingController();
+  final TextEditingController buscadorRutinaEjercicioController =
+      TextEditingController();
 
   final TextEditingController rutinaNombreController =
       TextEditingController();
@@ -84,8 +86,11 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
   bool mostrarPanelRutina = false;
 
   String filtroGrupoEjercicio = 'Todos';
+  String filtroGrupoRutinaEjercicio = 'Todos';
   int paginaEjercicios = 0;
+  int paginaRutinaEjercicios = 0;
   final int ejerciciosPorPagina = 6;
+  final int ejerciciosRutinaPorPagina = 6;
 
   late AnimationController introController;
   late AnimationController floatController;
@@ -174,6 +179,7 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
     ejercicioDuracionController.dispose();
     ejercicioExpController.dispose();
     buscadorEjercicioController.dispose();
+    buscadorRutinaEjercicioController.dispose();
 
     rutinaNombreController.dispose();
     rutinaDescripcionController.dispose();
@@ -505,6 +511,66 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       inicio,
       fin > lista.length ? lista.length : fin,
     );
+  }
+
+  List<Map<String, dynamic>> get ejerciciosFiltradosParaRutina {
+    final busqueda = buscadorRutinaEjercicioController.text.trim().toLowerCase();
+
+    return ejercicios.where((ejercicio) {
+      final nombre = textoSeguro(ejercicio['nombre']).toLowerCase();
+      final descripcion = textoSeguro(ejercicio['descripcion']).toLowerCase();
+      final grupo = textoSeguro(ejercicio['grupo_muscular']);
+      final tipo = textoSeguro(ejercicio['tipo']).toLowerCase();
+
+      final coincideBusqueda = busqueda.isEmpty ||
+          nombre.contains(busqueda) ||
+          descripcion.contains(busqueda) ||
+          grupo.toLowerCase().contains(busqueda) ||
+          tipo.contains(busqueda);
+
+      final coincideGrupo = filtroGrupoRutinaEjercicio == 'Todos' ||
+          grupo.toLowerCase() == filtroGrupoRutinaEjercicio.toLowerCase();
+
+      return coincideBusqueda && coincideGrupo;
+    }).toList();
+  }
+
+  int get totalPaginasRutinaEjercicios {
+    final total = ejerciciosFiltradosParaRutina.length;
+
+    if (total == 0) return 1;
+
+    return (total / ejerciciosRutinaPorPagina).ceil();
+  }
+
+  List<Map<String, dynamic>> get ejerciciosRutinaPaginaActual {
+    final lista = ejerciciosFiltradosParaRutina;
+    final inicio = paginaRutinaEjercicios * ejerciciosRutinaPorPagina;
+    final fin = inicio + ejerciciosRutinaPorPagina;
+
+    if (inicio >= lista.length) {
+      return [];
+    }
+
+    return lista.sublist(
+      inicio,
+      fin > lista.length ? lista.length : fin,
+    );
+  }
+
+  void cambiarFiltroGrupoRutinaEjercicio(String grupo) {
+    setState(() {
+      filtroGrupoRutinaEjercicio = grupo;
+      paginaRutinaEjercicios = 0;
+    });
+  }
+
+  void cambiarPaginaRutinaEjercicios(int nuevaPagina) {
+    final ultimaPagina = totalPaginasRutinaEjercicios - 1;
+
+    setState(() {
+      paginaRutinaEjercicios = nuevaPagina.clamp(0, ultimaPagina);
+    });
   }
 
   void cambiarFiltroGrupoEjercicio(String grupo) {
@@ -2323,7 +2389,12 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       );
     }
 
-    final ejerciciosParaElegir = ejerciciosFiltradosCatalogo;
+    final filtrados = ejerciciosFiltradosParaRutina;
+    final pagina = ejerciciosRutinaPaginaActual;
+    final inicio = filtrados.isEmpty
+        ? 0
+        : paginaRutinaEjercicios * ejerciciosRutinaPorPagina + 1;
+    final fin = filtrados.isEmpty ? 0 : inicio + pagina.length - 1;
 
     if (ejercicios.isEmpty) {
       return buildMiniEmpty(
@@ -2333,120 +2404,312 @@ class _EjerciciosScreenState extends State<EjerciciosScreen>
       );
     }
 
-    if (ejerciciosParaElegir.isEmpty) {
-      return buildMiniEmpty(
-        icon: Icons.search_off_outlined,
-        title: 'Sin resultados',
-        text: 'Cambia el buscador o el filtro para ver más ejercicios.',
-      );
-    }
-
-    return SizedBox(
-      height: 170,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: ejerciciosParaElegir.length,
-        separatorBuilder: (context, index) {
-          return const SizedBox(width: 10);
-        },
-        itemBuilder: (context, index) {
-          final ejercicio = ejerciciosParaElegir[index];
-          final color = colorPorGrupo(ejercicio['grupo_muscular']?.toString());
-
-          return Container(
-            width: 210,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: color.withOpacity(0.22),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        buildRoutineExercisePickerToolbar(),
+        const SizedBox(height: 10),
+        if (filtrados.isEmpty)
+          buildMiniEmpty(
+            icon: Icons.search_off_outlined,
+            title: 'Sin resultados',
+            text: 'Cambia el buscador o el filtro para ver más ejercicios.',
+          )
+        else ...[
+          Text(
+            'Mostrando $inicio-$fin de ${filtrados.length} ejercicios para elegir.',
+            style: TextStyle(
+              color: tema.textoSuave,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: const Icon(
-                        Icons.fitness_center_outlined,
-                        color: Colors.white,
-                        size: 19,
-                      ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 186,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: pagina.length,
+              separatorBuilder: (context, index) {
+                return const SizedBox(width: 10);
+              },
+              itemBuilder: (context, index) {
+                final ejercicio = pagina[index];
+                final numero = paginaRutinaEjercicios * ejerciciosRutinaPorPagina + index + 1;
+                final color = colorPorGrupo(
+                  ejercicio['grupo_muscular']?.toString(),
+                );
+
+                return Container(
+                  width: 230,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: color.withOpacity(0.22),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        ejercicio['nombre']?.toString() ?? 'Ejercicio',
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: Center(
+                              child: Text(
+                                numero.toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              ejercicio['nombre']?.toString() ?? 'Ejercicio',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: tema.texto,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${ejercicio['grupo_muscular'] ?? 'Sin grupo'} • ${ejercicio['tipo'] ?? 'Sin tipo'} • ${ejercicio['duracion_minutos']} min • ${ejercicio['valor_exp']} XP',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: tema.texto,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
+                          color: tema.textoSuave,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${ejercicio['grupo_muscular'] ?? 'Sin grupo'} • ${ejercicio['duracion_minutos']} min • ${ejercicio['valor_exp']} XP',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: Text(
+                          descripcionEjercicio(ejercicio),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: tema.textoSuave,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      GestureDetector(
+                        onTap: () {
+                          agregarEjercicioARutina(ejercicio);
+                        },
+                        child: Container(
+                          height: 32,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Agregar a rutina',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          buildRoutineExercisePickerPaginador(),
+        ],
+      ],
+    );
+  }
+
+  Widget buildRoutineExercisePickerToolbar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0EA5E9).withOpacity(0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFF0EA5E9).withOpacity(0.18),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.search,
+                color: Color(0xFF0EA5E9),
+                size: 21,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: buscadorRutinaEjercicioController,
+                  onChanged: (_) {
+                    setState(() {
+                      paginaRutinaEjercicios = 0;
+                    });
+                  },
                   style: TextStyle(
-                    color: tema.textoSuave,
-                    fontSize: 11,
+                    color: tema.texto,
+                    fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
-                ),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: Text(
-                    descripcionEjercicio(ejercicio),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Buscar para la rutina...',
+                    hintStyle: TextStyle(
                       color: tema.textoSuave,
-                      fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      height: 1.25,
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
+              ),
+              if (buscadorRutinaEjercicioController.text.trim().isNotEmpty)
                 GestureDetector(
                   onTap: () {
-                    agregarEjercicioARutina(ejercicio);
+                    setState(() {
+                      buscadorRutinaEjercicioController.clear();
+                      paginaRutinaEjercicios = 0;
+                    });
                   },
-                  child: Container(
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(999),
+                  child: Icon(
+                    Icons.close,
+                    color: tema.textoSuave,
+                    size: 20,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: gruposEjerciciosDisponibles.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final grupo = gruposEjerciciosDisponibles[index];
+              final activo = filtroGrupoRutinaEjercicio == grupo;
+              final color = grupo == 'Todos'
+                  ? const Color(0xFF0EA5E9)
+                  : colorPorGrupo(grupo);
+
+              return GestureDetector(
+                onTap: () {
+                  cambiarFiltroGrupoRutinaEjercicio(grupo);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: activo ? color : color.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: color.withOpacity(0.25),
                     ),
-                    child: const Text(
-                      'Agregar a rutina',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                      ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    grupo,
+                    style: TextStyle(
+                      color: activo ? Colors.white : color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
-              ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildRoutineExercisePickerPaginador() {
+    if (totalPaginasRutinaEjercicios <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: paginaRutinaEjercicios <= 0
+                  ? null
+                  : () {
+                      cambiarPaginaRutinaEjercicios(
+                        paginaRutinaEjercicios - 1,
+                      );
+                    },
+              icon: const Icon(Icons.chevron_left),
+              label: const Text(
+                'Anterior',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
-          );
-        },
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${paginaRutinaEjercicios + 1}/$totalPaginasRutinaEjercicios',
+            style: TextStyle(
+              color: tema.texto,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: paginaRutinaEjercicios >= totalPaginasRutinaEjercicios - 1
+                  ? null
+                  : () {
+                      cambiarPaginaRutinaEjercicios(
+                        paginaRutinaEjercicios + 1,
+                      );
+                    },
+              icon: const Icon(Icons.chevron_right),
+              label: const Text(
+                'Siguiente',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
