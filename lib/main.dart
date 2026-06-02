@@ -7,6 +7,8 @@ import 'screens/ajustes.dart';
 import 'screens/misiones.dart';
 import 'screens/activitis_dash.dart';
 import 'screens/activitis_dash_day.dart';
+import 'screens/ejercicios.dart';
+
 import 'utils/notificaciones_tareas.dart';
 import 'utils/auth_guard.dart';
 
@@ -62,6 +64,10 @@ class ActivityApp extends StatelessWidget {
 
         '/activitis-dash-day': (context) => const AuthGuard(
               child: ActivitisDashDayScreen(),
+            ),
+
+        '/ejercicios': (context) => const AuthGuard(
+              child: EjerciciosScreen(),
             ),
       },
     );
