@@ -182,9 +182,10 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (!mounted) return;
 
-      Navigator.pushReplacementNamed(
+      Navigator.pushNamedAndRemoveUntil(
         context,
         '/dashboard',
+        (route) => false,
         arguments: {'usuario': result['usuario']},
       );
     } catch (error) {

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'screens/home.dart';
 import 'screens/login.dart';
 import 'screens/dashboard.dart';
 import 'screens/estadisticas.dart';
@@ -9,6 +8,7 @@ import 'screens/misiones.dart';
 import 'screens/activitis_dash.dart';
 import 'screens/activitis_dash_day.dart';
 import 'utils/notificaciones_tareas.dart';
+import 'utils/auth_guard.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,17 +30,39 @@ class ActivityApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      initialRoute: '/',
+      initialRoute: '/login',
       routes: {
-        '/': (context) => const HomeScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/dashboard': (context) => const DashboardScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/estadisticas': (context) => const EstadisticasScreen(),
-        '/ajustes': (context) => const AjustesScreen(),
-        '/misiones': (context) => const MisionesScreen(),
-        '/activitis-dash': (context) => const ActivitisDashScreen(),
-        '/activitis-dash-day': (context) => const ActivitisDashDayScreen(),
+        '/login': (context) => const LoginGuard(
+              child: LoginScreen(),
+            ),
+
+        '/dashboard': (context) => const AuthGuard(
+              child: DashboardScreen(),
+            ),
+
+        '/home': (context) => const AuthGuard(
+              child: DashboardScreen(),
+            ),
+
+        '/estadisticas': (context) => const AuthGuard(
+              child: EstadisticasScreen(),
+            ),
+
+        '/ajustes': (context) => const AuthGuard(
+              child: AjustesScreen(),
+            ),
+
+        '/misiones': (context) => const AuthGuard(
+              child: MisionesScreen(),
+            ),
+
+        '/activitis-dash': (context) => const AuthGuard(
+              child: ActivitisDashScreen(),
+            ),
+
+        '/activitis-dash-day': (context) => const AuthGuard(
+              child: ActivitisDashDayScreen(),
+            ),
       },
     );
   }
