@@ -48,6 +48,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   int? idMisionDiariaAccionando;
   int? idRutinaEjercicioAccionando;
   DateTime ahoraTick = DateTime.now();
+  DateTime? horaServidorBase;
+  DateTime? horaDispositivoBase;
+  String? zonaHorariaServidor;
+  bool usandoHoraServidor = false;
 
   String filtroMisiones = 'pendientes';
   String filtroTipoMision = filtroTodosTipos;
@@ -233,7 +237,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!mounted) return;
 
       setState(() {
-        ahoraTick = DateTime.now();
+        ahoraTick = obtenerAhoraActual();
         misiones = recalcularCuentasRegresivas(misiones);
       });
     });
@@ -460,6 +464,95 @@ class _DashboardScreenState extends State<DashboardScreen>
     return DateTime(year, month, day, hour, minute, second);
   }
 
+  DateTime obtenerAhoraActual() {
+    if (horaServidorBase == null || horaDispositivoBase == null) {
+      return DateTime.now();
+    }
+
+    final diferencia = DateTime.now().difference(horaDispositivoBase!);
+
+    return horaServidorBase!.add(diferencia);
+  }
+
+  DateTime? obtenerHoraServidorDesdeResponse(dynamic response) {
+    if (response is! Map<String, dynamic>) return null;
+
+    final posiblesLlaves = [
+      'server_time',
+      'serverTime',
+      'hora_servidor',
+      'horaServidor',
+      'fecha_servidor',
+      'fechaServidor',
+      'now',
+      'timestamp',
+    ];
+
+    for (final llave in posiblesLlaves) {
+      final fecha = convertirFecha(response[llave]);
+
+      if (fecha != null) {
+        return fecha;
+      }
+    }
+
+    final meta = response['meta'];
+
+    if (meta is Map<String, dynamic>) {
+      for (final llave in posiblesLlaves) {
+        final fecha = convertirFecha(meta[llave]);
+
+        if (fecha != null) {
+          return fecha;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String? obtenerZonaHorariaServidorDesdeResponse(dynamic response) {
+    if (response is! Map<String, dynamic>) return null;
+
+    final valorDirecto = response['server_timezone'] ??
+        response['serverTimezone'] ??
+        response['zona_horaria_servidor'] ??
+        response['zonaHorariaServidor'] ??
+        response['timezone'];
+
+    if (valorDirecto != null && valorDirecto.toString().trim().isNotEmpty) {
+      return valorDirecto.toString().trim();
+    }
+
+    final meta = response['meta'];
+
+    if (meta is Map<String, dynamic>) {
+      final valorMeta = meta['server_timezone'] ??
+          meta['serverTimezone'] ??
+          meta['zona_horaria_servidor'] ??
+          meta['zonaHorariaServidor'] ??
+          meta['timezone'];
+
+      if (valorMeta != null && valorMeta.toString().trim().isNotEmpty) {
+        return valorMeta.toString().trim();
+      }
+    }
+
+    return null;
+  }
+
+  void sincronizarHoraServidorDesdeResponse(dynamic response) {
+    final fechaServidor = obtenerHoraServidorDesdeResponse(response);
+
+    if (fechaServidor == null) return;
+
+    horaServidorBase = fechaServidor;
+    horaDispositivoBase = DateTime.now();
+    zonaHorariaServidor = obtenerZonaHorariaServidorDesdeResponse(response);
+    usandoHoraServidor = true;
+    ahoraTick = obtenerAhoraActual();
+  }
+
   DateTime? obtenerFechaReferencia(
     Map<String, dynamic> item,
     List<String> llaves,
@@ -531,7 +624,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   ]) {
     if (fechaObjetivo == null) return '';
 
-    final actual = fechaActual ?? DateTime.now();
+    final actual = fechaActual ?? obtenerAhoraActual();
     final diferencia = fechaObjetivo.difference(actual);
 
     if (diferencia.inMilliseconds <= 0) {
@@ -629,7 +722,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     DateTime? fechaFin, [
     DateTime? ahora,
   ]) {
-    final actual = ahora ?? DateTime.now();
+    final actual = ahora ?? obtenerAhoraActual();
     final estatus = actividad['estatus'];
 
     if (estatusEsTerminado(estatus)) return 'completada';
@@ -1296,6 +1389,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         return;
       }
 
+      sincronizarHoraServidorDesdeResponse(response);
+
       final usuarioRaw = response['usuario'];
       final nivelInfoRaw = response['nivel_info'] ??
           response['nivelInfo'] ??
@@ -1331,6 +1426,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     final response = await ApiService.put('/auth/exp', {
       'exp': nuevoExp,
     });
+
+    sincronizarHoraServidorDesdeResponse(response);
 
     if (response is Map<String, dynamic> && response['usuario'] != null) {
       final usuarioActualizado = Map<String, dynamic>.from(response['usuario']);
@@ -1380,6 +1477,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       await procesarVencidasEnBackend();
 
       final response = await ApiService.get('/actividades');
+
+      sincronizarHoraServidorDesdeResponse(response);
 
       List<dynamic> actividadesRaw = [];
 
@@ -1451,6 +1550,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       });
 
       final response = await ApiService.get('/actividades/diarias/hoy');
+
+      sincronizarHoraServidorDesdeResponse(response);
 
       List<dynamic> actividadesRaw = [];
 
@@ -1545,6 +1646,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         '/actividades/diarias/$idMision/completar-hoy',
       );
 
+      sincronizarHoraServidorDesdeResponse(response);
+
       if (response is Map<String, dynamic>) {
         final usuarioRaw = response['usuario'];
 
@@ -1631,6 +1734,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       final response = await ApiService.get('/actividades/ejercicios/rutinas/hoy');
 
+      sincronizarHoraServidorDesdeResponse(response);
+
       List<dynamic> rutinasRaw = [];
 
       if (response is Map<String, dynamic>) {
@@ -1695,6 +1800,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         },
       );
+
+      sincronizarHoraServidorDesdeResponse(response);
 
       if (response is Map<String, dynamic>) {
         final usuarioRaw = response['usuario'];
@@ -2254,6 +2361,17 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  String get textoHoraServidor {
+    final fecha = obtenerAhoraActual();
+    final hora = formatearHora(fecha) ?? '--:--';
+    final origen = usandoHoraServidor ? 'Servidor' : 'Dispositivo';
+    final zona = zonaHorariaServidor == null || zonaHorariaServidor!.isEmpty
+        ? ''
+        : ' • $zonaHorariaServidor';
+
+    return '$origen $hora$zona';
+  }
+
   Widget buildHeaderCard() {
     final nombreUsuario = usuario?['nombre_usuario'] ?? 'Jugador';
 
@@ -2367,6 +2485,33 @@ class _DashboardScreenState extends State<DashboardScreen>
                               fontSize: 10,
                               fontWeight: FontWeight.w800,
                             ),
+                          ),
+                          const SizedBox(height: 1),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.access_time,
+                                size: 11,
+                                color: usandoHoraServidor
+                                    ? tema.exito
+                                    : const Color(0xFF94A3B8),
+                              ),
+                              const SizedBox(width: 3),
+                              Expanded(
+                                child: Text(
+                                  textoHoraServidor,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: usandoHoraServidor
+                                        ? tema.exito
+                                        : const Color(0xFF94A3B8),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
