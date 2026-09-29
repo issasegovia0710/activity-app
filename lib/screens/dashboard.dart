@@ -618,6 +618,19 @@ class _DashboardScreenState extends State<DashboardScreen>
     return '$fechaTexto $horaTexto';
   }
 
+  String? formatearFechaApi(DateTime? fecha) {
+    if (fecha == null) return null;
+
+    final year = fecha.year.toString().padLeft(4, '0');
+    final month = fecha.month.toString().padLeft(2, '0');
+    final day = fecha.day.toString().padLeft(2, '0');
+    final hour = fecha.hour.toString().padLeft(2, '0');
+    final minute = fecha.minute.toString().padLeft(2, '0');
+    final second = fecha.second.toString().padLeft(2, '0');
+
+    return '$year-$month-$day $hour:$minute:$second';
+  }
+
   String formatearCuentaRegresiva(
     DateTime? fechaObjetivo, [
     DateTime? fechaActual,
@@ -1262,7 +1275,46 @@ class _DashboardScreenState extends State<DashboardScreen>
     };
   }
 
+  int pesoPrioridad(dynamic valor) {
+    final prioridad = (valor ?? '').toString().trim().toLowerCase();
+    if (prioridad == 'alta' || prioridad == 'high') return 1;
+    if (prioridad == 'media' || prioridad == 'medium') return 2;
+    if (prioridad == 'baja' || prioridad == 'low') return 3;
+    return 4;
+  }
+
+  List<Map<String, dynamic>> get misionesPorPrioridad {
+    final lista = misiones.where((mision) {
+      if (!estatusEsPendiente(mision['estatus'])) return false;
+      if (mision['completada'] == true || mision['noCumplida'] == true) return false;
+      return coincideFiltroTipoMision(mision);
+    }).toList();
+
+    lista.sort((a, b) {
+      final prioridadA = pesoPrioridad(a['prioridad']);
+      final prioridadB = pesoPrioridad(b['prioridad']);
+      if (prioridadA != prioridadB) return prioridadA.compareTo(prioridadB);
+
+      final fechaA = a['fechaFin'] is DateTime
+          ? a['fechaFin'] as DateTime
+          : convertirFecha(a['fecha_fin']);
+      final fechaB = b['fechaFin'] is DateTime
+          ? b['fechaFin'] as DateTime
+          : convertirFecha(b['fecha_fin']);
+
+      final tiempoA = fechaA?.millisecondsSinceEpoch ?? (1 << 52);
+      final tiempoB = fechaB?.millisecondsSinceEpoch ?? (1 << 52);
+      return tiempoA.compareTo(tiempoB);
+    });
+
+    return lista;
+  }
+
   List<Map<String, dynamic>> get misionesFiltradas {
+    if (filtroMisiones == 'prioridades') {
+      return misionesPorPrioridad;
+    }
+
     if (filtroMisiones == 'vida_diaria') {
       final diarias = misionesDiariasHoy
           .map(mapearMisionDiariaHoyAMisionDashboard)
@@ -1288,6 +1340,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return ordenarMisiones(filtradas);
+  }
+
+  int get totalPrioridades {
+    return misionesPorPrioridad.length;
   }
 
   int get totalVidaDiaria {
@@ -1323,6 +1379,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   String get textoVacioFiltro {
+    if (filtroMisiones == 'prioridades') {
+      return 'No tienes tareas activas para priorizar.';
+    }
+
     if (filtroMisiones == 'vida_diaria') {
       return 'No tienes misiones de vida diaria para hoy.';
     }
@@ -1347,6 +1407,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   String get descripcionVacioFiltro {
+    if (filtroMisiones == 'prioridades') {
+      return 'Aquí aparecerán primero las tareas de prioridad alta, luego media y baja.';
+    }
+
     if (filtroMisiones == 'vida_diaria') {
       return 'Cuando toque una rutina diaria, aparecerá aquí para marcarla como cumplida.';
     }
@@ -1896,6 +1960,95 @@ class _DashboardScreenState extends State<DashboardScreen>
           error,
           'No se pudo completar la misión.',
         ),
+      );
+    }
+  }
+
+  Future<void> cambiarFechaTerminado(Map<String, dynamic> mision) async {
+    if (mision['esDiaria'] == true || mision['esEjercicio'] == true) return;
+
+    final id = mision['id'];
+    if (id == null) return;
+
+    final cierreActual = convertirFecha(mision['fecha_fin']) ?? DateTime.now();
+    final fechaInicio = convertirFecha(mision['fecha_inicio']);
+
+    final fecha = await showDatePicker(
+      context: context,
+      initialDate: cierreActual,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: tema.primario,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: tema.texto,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (fecha == null || !mounted) return;
+
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(cierreActual),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: tema.primario,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: tema.texto,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (hora == null || !mounted) return;
+
+    final nuevaFecha = DateTime(
+      fecha.year,
+      fecha.month,
+      fecha.day,
+      hora.hour,
+      hora.minute,
+    );
+
+    if (fechaInicio != null && nuevaFecha.isBefore(fechaInicio)) {
+      mostrarMensaje(
+        titulo: 'Fecha inválida',
+        mensaje: 'La fecha de terminado no puede quedar antes de la fecha de inicio.',
+      );
+      return;
+    }
+
+    try {
+      await ApiService.put(
+        '/actividades/$id/cierre',
+        {'fecha_fin': formatearFechaApi(nuevaFecha)},
+      );
+
+      if (!mounted) return;
+
+      mostrarMensaje(
+        titulo: 'Fecha actualizada',
+        mensaje: 'Fecha de terminado: ${formatearFechaHora(nuevaFecha)}.',
+      );
+      await cargarMisionesDelDia();
+    } catch (error) {
+      if (!mounted) return;
+      mostrarMensaje(
+        titulo: 'Error',
+        mensaje: limpiarError(error, 'No se pudo cambiar la fecha de terminado.'),
       );
     }
   }
@@ -3059,6 +3212,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget buildMissionFilters() {
     final filtros = [
       {
+        'id': 'prioridades',
+        'label': 'Prioridades',
+        'count': totalPrioridades,
+        'icon': Icons.priority_high_rounded,
+      },
+      {
         'id': 'vida_diaria',
         'label': 'Vida diaria',
         'count': totalVidaDiaria,
@@ -3171,141 +3330,166 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget buildTipoFilterSelect() {
+  Future<void> seleccionarTipoMisionConBuscador() async {
+    final controller = TextEditingController();
     final tipos = tiposMisionesDisponibles;
-    final valorSeguro = filtroTipoMision == filtroTodosTipos ||
-            tipos.contains(filtroTipoMision)
-        ? filtroTipoMision
-        : filtroTodosTipos;
 
-    return Container(
-      height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.16),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.24),
-          width: 1.2,
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: valorSeguro,
-          isExpanded: true,
-          dropdownColor: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          icon: Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: tema.primario,
-          ),
-          selectedItemBuilder: (context) {
-            return [
-              Row(
-                children: const [
-                  Icon(
-                    Icons.category_outlined,
-                    size: 18,
-                    color: Colors.white,
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Todas',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ],
+    final seleccionado = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        String busqueda = '';
+
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            final filtrados = tipos.where((tipo) {
+              return tipo.toLowerCase().contains(busqueda.trim().toLowerCase());
+            }).toList();
+
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
               ),
-              ...tipos.map((tipo) {
-                return Row(
+              title: Text(
+                'Filtrar por categoría',
+                style: TextStyle(
+                  color: tema.texto,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              content: SizedBox(
+                width: 420,
+                height: 420,
+                child: Column(
                   children: [
-                    Icon(
-                      obtenerIconoPorTipo(tipo),
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        tipo,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      onChanged: (value) {
+                        setLocalState(() {
+                          busqueda = value;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Buscar categoría...',
+                        prefixIcon: Icon(Icons.search, color: tema.primario),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                         ),
                       ),
                     ),
-                  ],
-                );
-              }).toList(),
-            ];
-          },
-          items: [
-            DropdownMenuItem<String>(
-              value: filtroTodosTipos,
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.all_inclusive,
-                    size: 18,
-                    color: tema.primario,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Todas',
-                    style: TextStyle(
-                      color: tema.texto,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ...tipos.map((tipo) {
-              return DropdownMenuItem<String>(
-                value: tipo,
-                child: Row(
-                  children: [
-                    Icon(
-                      obtenerIconoPorTipo(tipo),
-                      size: 18,
-                      color: obtenerColorPorTipo(tipo),
-                    ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 10),
                     Expanded(
-                      child: Text(
-                        tipo,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: tema.texto,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
+                      child: ListView(
+                        children: [
+                          ListTile(
+                            leading: Icon(Icons.all_inclusive, color: tema.primario),
+                            title: const Text(
+                              'Todas',
+                              style: TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                            trailing: filtroTipoMision == filtroTodosTipos
+                                ? Icon(Icons.check_circle, color: tema.exito)
+                                : null,
+                            onTap: () => Navigator.pop(dialogContext, filtroTodosTipos),
+                          ),
+                          ...filtrados.map((tipo) {
+                            return ListTile(
+                              leading: Icon(
+                                obtenerIconoPorTipo(tipo),
+                                color: obtenerColorPorTipo(tipo),
+                              ),
+                              title: Text(
+                                tipo,
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              trailing: filtroTipoMision == tipo
+                                  ? Icon(Icons.check_circle, color: tema.exito)
+                                  : null,
+                              onTap: () => Navigator.pop(dialogContext, tipo),
+                            );
+                          }),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              );
-            }).toList(),
-          ],
-          onChanged: (value) {
-            if (value == null) return;
-
-            setState(() {
-              filtroTipoMision = value;
-            });
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: tema.primario,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            );
           },
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (seleccionado == null || !mounted) return;
+
+    setState(() {
+      filtroTipoMision = seleccionado;
+    });
+  }
+
+  Widget buildTipoFilterSelect() {
+    final valorSeguro = filtroTipoMision == filtroTodosTipos ||
+            tiposMisionesDisponibles.contains(filtroTipoMision)
+        ? filtroTipoMision
+        : filtroTodosTipos;
+    final etiqueta = valorSeguro == filtroTodosTipos ? 'Todas' : valorSeguro;
+
+    return GestureDetector(
+      onTap: seleccionarTipoMisionConBuscador,
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.16),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.24),
+            width: 1.2,
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.search_rounded,
+              size: 18,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                etiqueta,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: Colors.white,
+            ),
+          ],
         ),
       ),
     );
@@ -3400,6 +3584,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           mision: mision,
           index: index,
           onComplete: () => completarMision(mision),
+          onChangeEndDate: () => cambiarFechaTerminado(mision),
         );
       },
     );
@@ -3797,12 +3982,14 @@ class AnimatedMissionCard extends StatefulWidget {
   final Map<String, dynamic> mision;
   final int index;
   final VoidCallback onComplete;
+  final VoidCallback onChangeEndDate;
 
   const AnimatedMissionCard({
     super.key,
     required this.mision,
     required this.index,
     required this.onComplete,
+    required this.onChangeEndDate,
   });
 
   @override
@@ -3925,6 +4112,17 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
     final atrasada = mision['estadoTiempo'] == 'atrasada';
     final vencida = mision['estadoTiempo'] == 'vencida';
     final enProceso = mision['estadoTiempo'] == 'en_proceso';
+    final prioridad = (mision['prioridad'] ?? 'media').toString().toLowerCase();
+    final prioridadTexto = prioridad == 'alta' || prioridad == 'high'
+        ? 'Alta'
+        : prioridad == 'baja' || prioridad == 'low'
+            ? 'Baja'
+            : 'Media';
+    final prioridadColor = prioridad == 'alta' || prioridad == 'high'
+        ? const Color(0xFFDC2626)
+        : prioridad == 'baja' || prioridad == 'low'
+            ? const Color(0xFF16A34A)
+            : const Color(0xFFF59E0B);
 
     String textoEstado() {
       if (esEjercicio && completada) return 'Rutina hecha';
@@ -4191,9 +4389,61 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFFEE2E2),
                         color: const Color(0xFFB91C1C),
                       ),
+                    if (!esRutinaEspecial && (vencida || noCumplida)) ...[
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: widget.onChangeEndDate,
+                          icon: const Icon(Icons.edit_calendar_outlined),
+                          label: const Text(
+                            'Cambiar fecha de terminado',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFF59E0B),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 11),
                     Row(
                       children: [
+                        if (!esRutinaEspecial) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: prioridadColor.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.priority_high_rounded,
+                                  size: 15,
+                                  color: prioridadColor,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  prioridadTexto,
+                                  style: TextStyle(
+                                    color: prioridadColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,

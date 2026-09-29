@@ -33,6 +33,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
 
   Map<String, dynamic>? actividadEditando;
   bool mostrarEditor = false;
+  bool creandoNueva = false;
+  DateTime? fechaInicioCreando;
 
   String nombre = '';
   String descripcion = '';
@@ -526,6 +528,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
 
   void abrirEditor(Map<String, dynamic> actividad) {
     setState(() {
+      creandoNueva = false;
+      fechaInicioCreando = null;
       actividadEditando = actividad;
       mostrarEditor = true;
 
@@ -546,6 +550,26 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     modalController.forward(from: 0);
   }
 
+  void abrirCreador() {
+    final ahora = DateTime.now();
+
+    setState(() {
+      creandoNueva = true;
+      actividadEditando = null;
+      mostrarEditor = true;
+      nombre = '';
+      descripcion = '';
+      prioridad = 'media';
+      duracionHoras = '1';
+      estatus = 'pendiente';
+      fechaInicioCreando = ahora;
+      fechaCierreEditando = ahora.add(const Duration(hours: 1));
+      fechaCierreManualEditada = true;
+    });
+
+    modalController.forward(from: 0);
+  }
+
   Future<void> cerrarEditor() async {
     if (guardando) return;
 
@@ -556,6 +580,8 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     setState(() {
       mostrarEditor = false;
       actividadEditando = null;
+      creandoNueva = false;
+      fechaInicioCreando = null;
       fechaCierreEditando = null;
       fechaCierreManualEditada = false;
     });
@@ -567,6 +593,7 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
         (actividadEditando == null
             ? null
             : obtenerFechaCierre(actividadEditando!)) ??
+        fechaInicioCreando?.add(const Duration(hours: 1)) ??
         DateTime.now();
 
     final fecha = await showDatePicker(
@@ -630,8 +657,157 @@ class _ActivitisDashScreenState extends State<ActivitisDashScreen>
     });
   }
 
+  Future<void> seleccionarFechaInicioCreacion() async {
+    final base = fechaInicioCreando ?? DateTime.now();
+
+    final fecha = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      barrierDismissible: false,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: tema.primario,
+              onPrimary: Colors.white,
+              surface: tema.tarjeta,
+              onSurface: tema.texto,
+            ),
+            dialogBackgroundColor: tema.tarjeta,
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (fecha == null || !mounted) return;
+
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(base),
+      barrierDismissible: false,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: tema.primario,
+              onPrimary: Colors.white,
+              surface: tema.tarjeta,
+              onSurface: tema.texto,
+            ),
+            dialogBackgroundColor: tema.tarjeta,
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (hora == null || !mounted) return;
+
+    final nueva = DateTime(fecha.year, fecha.month, fecha.day, hora.hour, hora.minute);
+
+    setState(() {
+      fechaInicioCreando = nueva;
+      if (fechaCierreEditando == null || !fechaCierreEditando!.isAfter(nueva)) {
+        fechaCierreEditando = nueva.add(const Duration(hours: 1));
+      }
+    });
+  }
+
+  Future<void> cambiarFechaTerminado(Map<String, dynamic> actividad) async {
+    final id = actividad['id'];
+    if (id == null) return;
+
+    final cierreActual = obtenerFechaCierre(actividad) ?? DateTime.now();
+    final fechaInicio = obtenerFechaInicio(actividad);
+
+    final fecha = await showDatePicker(
+      context: context,
+      initialDate: cierreActual,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      barrierDismissible: false,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: tema.primario,
+              onPrimary: Colors.white,
+              surface: tema.tarjeta,
+              onSurface: tema.texto,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (fecha == null || !mounted) return;
+
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(cierreActual),
+      barrierDismissible: false,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: tema.primario,
+              onPrimary: Colors.white,
+              surface: tema.tarjeta,
+              onSurface: tema.texto,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (hora == null || !mounted) return;
+
+    final nuevaFecha = DateTime(
+      fecha.year,
+      fecha.month,
+      fecha.day,
+      hora.hour,
+      hora.minute,
+    );
+
+    if (fechaInicio != null && nuevaFecha.isBefore(fechaInicio)) {
+      mostrarMensaje(
+        titulo: 'Fecha inválida',
+        mensaje: 'La fecha de terminado no puede quedar antes de la fecha de inicio.',
+      );
+      return;
+    }
+
+    try {
+      await ApiService.put(
+        '/actividades/$id/cierre',
+        {'fecha_fin': formatearFechaApi(nuevaFecha)},
+      );
+
+      if (!mounted) return;
+
+      mostrarMensaje(
+        titulo: 'Fecha actualizada',
+        mensaje: 'La fecha de terminado es ${formatearFechaHora(nuevaFecha)}.',
+      );
+      await cargarActividades();
+    } catch (error) {
+      if (!mounted) return;
+      mostrarMensaje(
+        titulo: 'Error',
+        mensaje: limpiarError(error, 'No se pudo cambiar la fecha de terminado.'),
+      );
+    }
+  }
+
+
 Future<void> guardarEdicion() async {
-  if (actividadEditando?['id'] == null) {
+  if (!creandoNueva && actividadEditando?['id'] == null) {
     mostrarMensaje(
       titulo: 'Error',
       mensaje: 'No se encontró el id de la actividad.',
@@ -657,14 +833,24 @@ Future<void> guardarEdicion() async {
     return;
   }
 
-  final inicio = obtenerFechaInicio(actividadEditando!);
+  final inicio = creandoNueva
+      ? fechaInicioCreando
+      : (actividadEditando == null ? null : obtenerFechaInicio(actividadEditando!));
+
+  if (creandoNueva && inicio == null) {
+    mostrarMensaje(
+      titulo: 'Falta fecha',
+      mensaje: 'Selecciona la fecha de inicio de la tarea.',
+    );
+    return;
+  }
 
   if (inicio != null &&
       fechaCierreEditando != null &&
       fechaCierreEditando!.isBefore(inicio)) {
     mostrarMensaje(
       titulo: 'Fecha inválida',
-      mensaje: 'La fecha de cierre no puede quedar antes de la fecha de inicio.',
+      mensaje: 'La fecha de entrega no puede quedar antes de la fecha de inicio.',
     );
     return;
   }
@@ -672,35 +858,62 @@ Future<void> guardarEdicion() async {
   final duracionFinal =
       duracionHoras.trim().isNotEmpty && horas != null ? horas : null;
 
-  final actividadActualizada = {
-    'nombre': nombre.trim(),
-    'descripcion': descripcion.trim().isEmpty ? null : descripcion.trim(),
-    'tipo': tipo,
-    'prioridad': prioridad,
-    'valor_exp': valorExpCalculado,
-    'duracion_horas': duracionFinal,
-    'repetecion': actividadEditando?['repetecion'],
-    'estatus': estatus,
-    'auxiliar': actividadEditando?['auxiliar'],
-  };
-
   try {
     setState(() {
       guardando = true;
     });
 
-    await ApiService.put(
-      '/actividades/${actividadEditando!['id']}',
-      actividadActualizada,
-    );
+    if (creandoNueva) {
+      final payload = {
+        'nombre': nombre.trim(),
+        'descripcion': descripcion.trim().isEmpty ? null : descripcion.trim(),
+        'tipo': tipo,
+        'prioridad': prioridad,
+        'valor_exp': valorExpCalculado,
+        'duracion_horas': duracionFinal ?? 1,
+        'fecha_inicio': formatearFechaApi(inicio),
+        'actividad_autoacompletable': 0,
+        'repetecion': 'una vez',
+        'estatus': 'pendiente',
+      };
 
-    if (fechaCierreManualEditada && fechaCierreEditando != null) {
+      final response = await ApiService.post('/actividades', payload);
+      dynamic idCreado;
+      if (response is Map<String, dynamic>) {
+        idCreado = response['id'] ??
+            (response['actividad'] is Map ? response['actividad']['id'] : null);
+      }
+
+      if (idCreado != null && fechaCierreEditando != null) {
+        await ApiService.put(
+          '/actividades/$idCreado/cierre',
+          {'fecha_fin': formatearFechaApi(fechaCierreEditando)},
+        );
+      }
+    } else {
+      final actividadActualizada = {
+        'nombre': nombre.trim(),
+        'descripcion': descripcion.trim().isEmpty ? null : descripcion.trim(),
+        'tipo': tipo,
+        'prioridad': prioridad,
+        'valor_exp': valorExpCalculado,
+        'duracion_horas': duracionFinal,
+        'repetecion': actividadEditando?['repetecion'],
+        'estatus': estatus,
+        'auxiliar': actividadEditando?['auxiliar'],
+      };
+
       await ApiService.put(
-        '/actividades/${actividadEditando!['id']}/cierre',
-        {
-          'fecha_fin': formatearFechaApi(fechaCierreEditando),
-        },
+        '/actividades/${actividadEditando!['id']}',
+        actividadActualizada,
       );
+
+      if (fechaCierreManualEditada && fechaCierreEditando != null) {
+        await ApiService.put(
+          '/actividades/${actividadEditando!['id']}/cierre',
+          {'fecha_fin': formatearFechaApi(fechaCierreEditando)},
+        );
+      }
     }
 
     if (!mounted) return;
@@ -709,13 +922,17 @@ Future<void> guardarEdicion() async {
       guardando = false;
     });
 
-    mostrarMensaje(
-      titulo: 'Actividad actualizada',
-      mensaje: 'La actividad se editó correctamente.',
-    );
-
+    final fueCreacion = creandoNueva;
     await cerrarEditor();
     await cargarActividades();
+
+    if (!mounted) return;
+    mostrarMensaje(
+      titulo: fueCreacion ? 'Tarea creada' : 'Actividad actualizada',
+      mensaje: fueCreacion
+          ? 'La tarea se agregó correctamente a $tipo.'
+          : 'La actividad se editó correctamente.',
+    );
   } catch (error) {
     if (!mounted) return;
 
@@ -727,7 +944,9 @@ Future<void> guardarEdicion() async {
       titulo: 'Error',
       mensaje: limpiarError(
         error,
-        'No se pudo editar la actividad.',
+        creandoNueva
+            ? 'No se pudo crear la tarea.'
+            : 'No se pudo editar la actividad.',
       ),
     );
   }
@@ -1276,6 +1495,33 @@ Future<void> guardarEdicion() async {
             ),
           ),
           GestureDetector(
+            onTap: abrirCreador,
+            child: Container(
+              height: 42,
+              padding: const EdgeInsets.symmetric(horizontal: 13),
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: tema.exito,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: tema.borde, width: 1.5),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.add_task_outlined, color: Colors.white, size: 19),
+                  SizedBox(width: 5),
+                  Text(
+                    'Tarea',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          GestureDetector(
             onTap: cargarActividades,
             child: Container(
               width: 42,
@@ -1656,6 +1902,7 @@ Future<void> guardarEdicion() async {
           onDelete: () => eliminarActividad(actividad),
           onToggleStatus: () => cambiarEstatusRapido(actividad),
           onDescription: () => abrirDescripcion(actividad),
+          onChangeEndDate: () => cambiarFechaTerminado(actividad),
         );
       },
     );
@@ -1725,8 +1972,8 @@ Future<void> guardarEdicion() async {
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: tema.borde, width: 3),
             ),
-            child: const Icon(
-              Icons.edit_outlined,
+            child: Icon(
+              creandoNueva ? Icons.add_task_outlined : Icons.edit_outlined,
               color: Colors.white,
               size: 26,
             ),
@@ -1737,7 +1984,7 @@ Future<void> guardarEdicion() async {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Editar actividad',
+                  creandoNueva ? 'Nueva tarea' : 'Editar actividad',
                   style: TextStyle(
                     color: tema.texto,
                     fontSize: 20,
@@ -1814,10 +2061,16 @@ Future<void> guardarEdicion() async {
             });
           },
         ),
-        buildLabel('Fecha de cierre'),
+        if (creandoNueva) ...[
+          buildLabel('Fecha de inicio'),
+          buildFechaInicioCreacion(),
+        ],
+        buildLabel(creandoNueva ? 'Fecha de entrega' : 'Fecha de cierre'),
         buildFechaCierreEditor(),
-        buildLabel('Estatus'),
-        buildStatusRow(),
+        if (!creandoNueva) ...[
+          buildLabel('Estatus'),
+          buildStatusRow(),
+        ],
         buildLabel('Experiencia recalculada'),
         buildExpAutoBox(),
         const SizedBox(height: 18),
@@ -1891,6 +2144,61 @@ Future<void> guardarEdicion() async {
     );
   }
 
+  Widget buildFechaInicioCreacion() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: mezclarConTema(tema.primario, 0.05, base: tema.tarjeta),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tema.borde, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: tema.primario.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(Icons.play_arrow_outlined, color: tema.primario, size: 21),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(
+              formatearFechaHora(fechaInicioCreando),
+              style: TextStyle(
+                color: tema.texto,
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: guardando ? null : seleccionarFechaInicioCreacion,
+            child: Container(
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: tema.primario,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                'Cambiar',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget buildFechaCierreEditor() {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1925,7 +2233,9 @@ Future<void> guardarEdicion() async {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Solo cambia el cierre, no modifica la duración.',
+                  creandoNueva
+                      ? 'Fecha límite para entregar esta tarea.'
+                      : 'Solo cambia el cierre, no modifica la duración.',
                   style: TextStyle(
                     color: tema.textoSuave,
                     fontSize: 11,
@@ -2127,9 +2437,11 @@ Future<void> guardarEdicion() async {
                   strokeWidth: 2.5,
                 ),
               )
-            : const Icon(Icons.save_outlined),
+            : Icon(creandoNueva ? Icons.add_task_outlined : Icons.save_outlined),
         label: Text(
-          guardando ? 'Guardando...' : 'Guardar cambios',
+          guardando
+              ? 'Guardando...'
+              : (creandoNueva ? 'Crear tarea' : 'Guardar cambios'),
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         style: FilledButton.styleFrom(
@@ -2160,6 +2472,7 @@ class ActivityCard extends StatefulWidget {
   final VoidCallback onDelete;
   final VoidCallback onToggleStatus;
   final VoidCallback onDescription;
+  final VoidCallback onChangeEndDate;
 
   const ActivityCard({
     super.key,
@@ -2177,6 +2490,7 @@ class ActivityCard extends StatefulWidget {
     required this.onDelete,
     required this.onToggleStatus,
     required this.onDescription,
+    required this.onChangeEndDate,
   });
 
   @override
@@ -2418,6 +2732,18 @@ class _ActivityCardState extends State<ActivityCard>
                   ),
                 ],
               ),
+              if (widget.estado == 'vencida' || widget.estado == 'no_cumplida') ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: buildActionButton(
+                    text: 'Cambiar fecha de terminado',
+                    icon: Icons.edit_calendar_outlined,
+                    bg: tema.aviso,
+                    onTap: widget.onChangeEndDate,
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Row(
                 children: [
