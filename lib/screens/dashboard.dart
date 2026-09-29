@@ -1275,24 +1275,26 @@ class _DashboardScreenState extends State<DashboardScreen>
     };
   }
 
-  int pesoPrioridad(dynamic valor) {
-    final prioridad = (valor ?? '').toString().trim().toLowerCase();
-    if (prioridad == 'alta' || prioridad == 'high') return 1;
-    if (prioridad == 'media' || prioridad == 'medium') return 2;
-    if (prioridad == 'baja' || prioridad == 'low') return 3;
-    return 4;
+  int? obtenerOrdenPrioridad(dynamic valor) {
+    if (valor == null) return null;
+
+    final numero = int.tryParse(valor.toString().trim());
+    if (numero == null || numero < 1) return null;
+
+    return numero;
   }
 
   List<Map<String, dynamic>> get misionesPorPrioridad {
     final lista = misiones.where((mision) {
       if (!estatusEsPendiente(mision['estatus'])) return false;
       if (mision['completada'] == true || mision['noCumplida'] == true) return false;
+      if (obtenerOrdenPrioridad(mision['orden_prioridad']) == null) return false;
       return coincideFiltroTipoMision(mision);
     }).toList();
 
     lista.sort((a, b) {
-      final prioridadA = pesoPrioridad(a['prioridad']);
-      final prioridadB = pesoPrioridad(b['prioridad']);
+      final prioridadA = obtenerOrdenPrioridad(a['orden_prioridad']) ?? 999999;
+      final prioridadB = obtenerOrdenPrioridad(b['orden_prioridad']) ?? 999999;
       if (prioridadA != prioridadB) return prioridadA.compareTo(prioridadB);
 
       final fechaA = a['fechaFin'] is DateTime
@@ -1408,7 +1410,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   String get descripcionVacioFiltro {
     if (filtroMisiones == 'prioridades') {
-      return 'Aquí aparecerán primero las tareas de prioridad alta, luego media y baja.';
+      return 'Aquí verás únicamente las tareas a las que asignaste un orden: #1, #2, #3...';
     }
 
     if (filtroMisiones == 'vida_diaria') {
@@ -2049,6 +2051,189 @@ class _DashboardScreenState extends State<DashboardScreen>
       mostrarMensaje(
         titulo: 'Error',
         mensaje: limpiarError(error, 'No se pudo cambiar la fecha de terminado.'),
+      );
+    }
+  }
+
+  Future<void> abrirModalOrdenPrioridad(Map<String, dynamic> mision) async {
+    if (mision['esDiaria'] == true || mision['esEjercicio'] == true) return;
+
+    final id = mision['id'];
+    if (id == null) return;
+
+    final prioridadActual = obtenerOrdenPrioridad(mision['orden_prioridad']);
+    final controller = TextEditingController(
+      text: prioridadActual?.toString() ?? '',
+    );
+
+    final resultado = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) {
+        String? errorTexto;
+
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              title: Text(
+                prioridadActual == null
+                    ? 'Asignar prioridad'
+                    : 'Cambiar prioridad #$prioridadActual',
+                style: TextStyle(
+                  color: tema.texto,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${mision['titulo'] ?? mision['nombre'] ?? 'Tarea'}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tema.textoSuave,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: controller,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      decoration: InputDecoration(
+                        labelText: 'Número de orden',
+                        hintText: 'Ej. 1',
+                        prefixIcon: Icon(
+                          Icons.format_list_numbered_rounded,
+                          color: tema.primario,
+                        ),
+                        errorText: errorTexto,
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE2E8F0),
+                          ),
+                        ),
+                      ),
+                      onSubmitted: (_) {
+                        final numero = int.tryParse(controller.text.trim());
+                        if (numero == null || numero < 1) {
+                          setLocalState(() {
+                            errorTexto = 'Escribe un número desde 1.';
+                          });
+                          return;
+                        }
+
+                        Navigator.pop(dialogContext, {
+                          'accion': 'guardar',
+                          'valor': numero,
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '1 será la tarea que harás primero. Si eliges un lugar ocupado, las demás se recorren automáticamente.',
+                      style: TextStyle(
+                        color: tema.textoSuave,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                if (prioridadActual != null)
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(dialogContext, {
+                        'accion': 'quitar',
+                      });
+                    },
+                    icon: const Icon(Icons.remove_circle_outline),
+                    label: const Text('Quitar'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFDC2626),
+                    ),
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancelar',
+                    style: TextStyle(
+                      color: tema.textoSuave,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final numero = int.tryParse(controller.text.trim());
+                    if (numero == null || numero < 1) {
+                      setLocalState(() {
+                        errorTexto = 'Escribe un número desde 1.';
+                      });
+                      return;
+                    }
+
+                    Navigator.pop(dialogContext, {
+                      'accion': 'guardar',
+                      'valor': numero,
+                    });
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: tema.primario,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text(
+                    'Guardar',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (resultado == null || !mounted) return;
+
+    final accion = resultado['accion']?.toString();
+    final valor = accion == 'quitar' ? null : resultado['valor'];
+
+    try {
+      await ApiService.put(
+        '/actividades/$id/orden-prioridad',
+        {'orden_prioridad': valor},
+      );
+
+      if (!mounted) return;
+
+      await cargarMisionesDelDia();
+    } catch (error) {
+      if (!mounted) return;
+
+      mostrarMensaje(
+        titulo: 'Error',
+        mensaje: limpiarError(
+          error,
+          'No se pudo actualizar la prioridad de ejecución.',
+        ),
       );
     }
   }
@@ -3585,6 +3770,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           index: index,
           onComplete: () => completarMision(mision),
           onChangeEndDate: () => cambiarFechaTerminado(mision),
+          onSetPriority: () => abrirModalOrdenPrioridad(mision),
+          mostrarBotonPrioridad: filtroMisiones == 'pendientes',
         );
       },
     );
@@ -3983,6 +4170,8 @@ class AnimatedMissionCard extends StatefulWidget {
   final int index;
   final VoidCallback onComplete;
   final VoidCallback onChangeEndDate;
+  final VoidCallback onSetPriority;
+  final bool mostrarBotonPrioridad;
 
   const AnimatedMissionCard({
     super.key,
@@ -3990,6 +4179,8 @@ class AnimatedMissionCard extends StatefulWidget {
     required this.index,
     required this.onComplete,
     required this.onChangeEndDate,
+    required this.onSetPriority,
+    required this.mostrarBotonPrioridad,
   });
 
   @override
@@ -4112,6 +4303,9 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
     final atrasada = mision['estadoTiempo'] == 'atrasada';
     final vencida = mision['estadoTiempo'] == 'vencida';
     final enProceso = mision['estadoTiempo'] == 'en_proceso';
+    final ordenPrioridad = int.tryParse(
+      (mision['orden_prioridad'] ?? '').toString().trim(),
+    );
     final prioridad = (mision['prioridad'] ?? 'media').toString().toLowerCase();
     final prioridadTexto = prioridad == 'alta' || prioridad == 'high'
         ? 'Alta'
@@ -4389,6 +4583,35 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                         bg: const Color(0xFFFEE2E2),
                         color: const Color(0xFFB91C1C),
                       ),
+                    if (widget.mostrarBotonPrioridad &&
+                        !esRutinaEspecial &&
+                        !completada &&
+                        !noCumplida) ...[
+                      const SizedBox(height: 11),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: widget.onSetPriority,
+                          icon: const Icon(Icons.format_list_numbered_rounded),
+                          label: Text(
+                            ordenPrioridad == null
+                                ? 'Asignar orden de prioridad'
+                                : 'Prioridad #$ordenPrioridad · Cambiar',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF4F46E5),
+                            side: const BorderSide(
+                              color: Color(0xFFC7D2FE),
+                              width: 1.4,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     if (!esRutinaEspecial && (vencida || noCumplida)) ...[
                       const SizedBox(height: 11),
                       SizedBox(
@@ -4413,6 +4636,37 @@ class _AnimatedMissionCardState extends State<AnimatedMissionCard>
                     const SizedBox(height: 11),
                     Row(
                       children: [
+                        if (!esRutinaEspecial && ordenPrioridad != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE0E7FF),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.format_list_numbered_rounded,
+                                  size: 15,
+                                  color: Color(0xFF4338CA),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '#$ordenPrioridad',
+                                  style: const TextStyle(
+                                    color: Color(0xFF4338CA),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
                         if (!esRutinaEspecial) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
